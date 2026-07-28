@@ -4,6 +4,8 @@ using AvaloniaMarkupSample;
 using Declarative.Avalonia.AgentTools;
 #endif
 
+[assembly: GenerateMarkupExtensionsForAvalonia]
+
 var lifetime = new ClassicDesktopStyleApplicationLifetime { Args = args, ShutdownMode = ShutdownMode.OnLastWindowClose };
 
 var appBuilder = AppBuilder.Configure<Application>()

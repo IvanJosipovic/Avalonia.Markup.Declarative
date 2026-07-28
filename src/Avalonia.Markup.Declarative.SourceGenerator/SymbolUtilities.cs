@@ -66,38 +66,97 @@ internal static class SymbolUtilities
                 SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier
         );
 
-    internal static ImmutableArray<IAssemblySymbol> GetTargetAssemblies(Compilation compilation)
+    internal static ImmutableArray<TargetAssembly> GetTargetAssemblies(Compilation compilation)
     {
-        var result = new HashSet<IAssemblySymbol>(SymbolEqualityComparer.Default);
+        var result = new Dictionary<IAssemblySymbol, bool>(SymbolEqualityComparer.Default);
 
+        foreach (var attribute in compilation.Assembly.GetAttributes())
+        {
+            switch (attribute.AttributeClass?.ToDisplayString())
+            {
+                case "Avalonia.Markup.Declarative.GenerateMarkupExtensionsForAssemblyAttribute":
+                    AddAssemblyAttributeTarget(result, attribute);
+                    break;
+                case "Avalonia.Markup.Declarative.GenerateMarkupExtensionsForAvaloniaAttribute":
+                    AddAvaloniaTargets(compilation, result, HasGeneratePublicExtensions(attribute));
+                    break;
+            }
+        }
+
+        return [.. result
+            .OrderBy(static x => x.Key.Name)
+            .Select(static x => new TargetAssembly(x.Key, x.Value))];
+    }
+
+    private static void AddAssemblyAttributeTarget(
+        Dictionary<IAssemblySymbol, bool> targets,
+        AttributeData attribute)
+    {
+        if (attribute.ConstructorArguments.Length == 0 ||
+            attribute.ConstructorArguments[0].Value is not INamedTypeSymbol anchorType)
+        {
+            return;
+        }
+
+        AddTargetAssembly(targets, anchorType.ContainingAssembly, HasGeneratePublicExtensions(attribute));
+    }
+
+    private static void AddAvaloniaTargets(
+        Compilation compilation,
+        Dictionary<IAssemblySymbol, bool> targets,
+        bool generatePublicExtensions)
+    {
         foreach (var reference in compilation.References)
         {
             if (compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol assembly &&
                 AutoFrameworkAssemblies.Contains(assembly.Name))
             {
-                result.Add(assembly);
+                AddTargetAssembly(targets, assembly, generatePublicExtensions);
             }
         }
+    }
 
-        foreach (var attribute in compilation.Assembly.GetAttributes())
+    private static void AddTargetAssembly(
+        Dictionary<IAssemblySymbol, bool> targets,
+        IAssemblySymbol assembly,
+        bool generatePublicExtensions)
+    {
+        if (targets.TryGetValue(assembly, out var existingValue))
         {
-            if (attribute.AttributeClass?.ToDisplayString() != "Avalonia.Markup.Declarative.GenerateMarkupExtensionsForAssemblyAttribute")
-            {
-                continue;
-            }
+            targets[assembly] = existingValue || generatePublicExtensions;
+        }
+        else
+        {
+            targets.Add(assembly, generatePublicExtensions);
+        }
+    }
 
-            if (attribute.ConstructorArguments.Length == 0)
-            {
-                continue;
-            }
-
-            if (attribute.ConstructorArguments[0].Value is INamedTypeSymbol anchorType)
-            {
-                result.Add(anchorType.ContainingAssembly);
-            }
+    private static bool HasGeneratePublicExtensions(AttributeData attribute)
+    {
+        if (attribute.NamedArguments.Any(static argument =>
+                argument.Key == "GeneratePublicExtensions" &&
+                argument.Value.Value is true))
+        {
+            return true;
         }
 
-        return [.. result.OrderBy(static x => x.Name)];
+        var argumentIndex = attribute.AttributeClass?.Name switch
+        {
+            "GenerateMarkupExtensionsForAvaloniaAttribute" => 0,
+            "GenerateMarkupExtensionsForAssemblyAttribute" => 1,
+            _ => -1,
+        };
+
+        return argumentIndex >= 0 &&
+            attribute.ConstructorArguments.Length > argumentIndex &&
+            attribute.ConstructorArguments[argumentIndex].Value is true;
+    }
+
+    internal readonly struct TargetAssembly(IAssemblySymbol assembly, bool generatePublicExtensions)
+    {
+        internal IAssemblySymbol Assembly { get; } = assembly;
+
+        internal bool GeneratePublicExtensions { get; } = generatePublicExtensions;
     }
 
     internal static IEnumerable<INamedTypeSymbol> GetPublicClasses(INamespaceSymbol sym)

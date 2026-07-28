@@ -2,6 +2,7 @@
 using ReactiveSample.Views;
 using ReactiveUI.Avalonia;
 
+[assembly: GenerateMarkupExtensionsForAvalonia]
 [assembly: GenerateMarkupExtensionsForAssembly(typeof(RoutedViewHost))] //external assembly extensions source generator support
 
 var lifetime = new ClassicDesktopStyleApplicationLifetime

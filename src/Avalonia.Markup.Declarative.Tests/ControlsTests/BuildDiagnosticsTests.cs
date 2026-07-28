@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Declarative;
+using Avalonia.Markup.Declarative.Tests.ControlsTests;
 
-[assembly: GenerateMarkupExtensionsForAssembly(typeof(Avalonia.Markup.Declarative.Tests.ControlsTests.GeneratedDiagnosticsControl))]
+[assembly: GenerateMarkupExtensionsForAvalonia]
+[assembly: GenerateMarkupExtensionsForAssembly(typeof(GeneratedDiagnosticsControl), true)]
 
 namespace Avalonia.Markup.Declarative.Tests.ControlsTests;
 
@@ -33,6 +35,18 @@ public class BrokenBindingDiagnosticsControl : Control
     public int BrokenBinding { get; set; }
 }
 
+public class PublicGeneratedDiagnosticsControl : Control
+{
+    public static readonly StyledProperty<int> ValueProperty =
+        AvaloniaProperty.Register<PublicGeneratedDiagnosticsControl, int>(nameof(Value));
+
+    public int Value
+    {
+        get => GetValue(ValueProperty);
+        set => SetValue(ValueProperty, value);
+    }
+}
+
 public class GeneratedDiagnosticsViewModel
 {
     public int Explosive { get; set; }
@@ -52,6 +66,16 @@ public sealed class RawBuildFailureView : ViewBase
 
 public class BuildDiagnosticsTests : AvaloniaTestBase
 {
+    [Fact]
+    public void Public_attribute_option_generates_public_extensions()
+    {
+        var extensionType = typeof(PublicGeneratedDiagnosticsControl).Assembly.GetType(
+            "Avalonia.Markup.Declarative.Avalonia_Markup_Declarative_Tests_ControlsTests_PublicGeneratedDiagnosticsControl_MarkupExtensions");
+
+        Assert.NotNull(extensionType);
+        Assert.True(extensionType!.IsPublic);
+    }
+
     [Fact]
     public void Generated_property_setter_reports_caller_file_and_line()
     {

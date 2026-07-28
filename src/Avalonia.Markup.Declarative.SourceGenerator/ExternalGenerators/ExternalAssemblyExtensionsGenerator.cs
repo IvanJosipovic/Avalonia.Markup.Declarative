@@ -21,7 +21,7 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
         {
             try
             {
-                var code = GeneratorHost.GenerateExtensions(target.TypeSymbol);
+                var code = GeneratorHost.GenerateExtensions(target.TypeSymbol, target.GeneratePublicExtensions);
                 if (string.IsNullOrWhiteSpace(code))
                 {
                     return;
@@ -39,19 +39,20 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
     private static ImmutableArray<ExternalGenerationTarget> GetGenerationTargets(Compilation compilation) =>
         [..
             SymbolUtilities.GetTargetAssemblies(compilation)
-                .SelectMany(static assembly => SymbolUtilities.GetPublicClasses(assembly.GlobalNamespace))
-                .Where(static publicClass => publicClass.IsOrInheritsFrom("Avalonia.AvaloniaObject"))
-                .Select(static publicClass => ExternalGenerationTarget.Create(publicClass))
+                .SelectMany(static targetAssembly => SymbolUtilities.GetPublicClasses(targetAssembly.Assembly.GlobalNamespace)
+                    .Where(static publicClass => publicClass.IsOrInheritsFrom("Avalonia.AvaloniaObject"))
+                    .Select(publicClass => ExternalGenerationTarget.Create(publicClass, targetAssembly.GeneratePublicExtensions)))
                 .OrderBy(static target => target.HintName, StringComparer.Ordinal)
         ];
 
     private readonly struct ExternalGenerationTarget
     {
-        public ExternalGenerationTarget(INamedTypeSymbol typeSymbol, string hintName, string signature)
+        public ExternalGenerationTarget(INamedTypeSymbol typeSymbol, string hintName, string signature, bool generatePublicExtensions)
         {
             TypeSymbol = typeSymbol;
             HintName = hintName;
             Signature = signature;
+            GeneratePublicExtensions = generatePublicExtensions;
         }
 
         public INamedTypeSymbol TypeSymbol { get; }
@@ -60,12 +61,14 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
 
         public string Signature { get; }
 
-        public static ExternalGenerationTarget Create(INamedTypeSymbol typeSymbol)
+        public bool GeneratePublicExtensions { get; }
+
+        public static ExternalGenerationTarget Create(INamedTypeSymbol typeSymbol, bool generatePublicExtensions)
         {
             var hintName = $"External_{SymbolUtilities.RemoveIllegalFileNameCharacters(typeSymbol.ToDisplayString())}.g.cs";
-            var signature = CreateSignature(typeSymbol);
+            var signature = CreateSignature(typeSymbol, generatePublicExtensions);
 
-            return new ExternalGenerationTarget(typeSymbol, hintName, signature);
+            return new ExternalGenerationTarget(typeSymbol, hintName, signature, generatePublicExtensions);
         }
     }
 
@@ -87,9 +90,10 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
         }
     }
 
-    private static string CreateSignature(INamedTypeSymbol typeSymbol)
+    private static string CreateSignature(INamedTypeSymbol typeSymbol, bool generatePublicExtensions)
     {
         var signature = new StringBuilder(1024);
+        AppendSignaturePart(signature, generatePublicExtensions ? "public" : "internal");
         AppendSignaturePart(signature, typeSymbol.ContainingAssembly.Identity.ToString());
         AppendSignaturePart(signature, typeSymbol.GetFullTypeName());
         AppendSignaturePart(signature, SymbolUtilities.BuildExtensionClassName(typeSymbol));

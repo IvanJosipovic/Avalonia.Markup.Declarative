@@ -88,7 +88,7 @@ internal sealed class ExternalGeneratorHost
         return fields.Where(static x => x.IsAcceptableStyledField());
     }
 
-    public string? GenerateExtensions(INamedTypeSymbol controlType)
+    public string? GenerateExtensions(INamedTypeSymbol controlType, bool generatePublicExtensions)
     {
         List<(string GroupName, string Extensions)>? generatedGroups = null;
 
@@ -121,7 +121,8 @@ internal sealed class ExternalGeneratorHost
         sb.AppendLine("namespace Avalonia.Markup.Declarative;");
         sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCode(\"Avalonia.Markup.Declarative.SourceGenerator\", \"1.0.0.0\")]");
         sb.AppendLine("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
-        sb.AppendLine($"internal static partial class {SymbolUtilities.BuildExtensionClassName(controlType)}");
+        var accessibility = generatePublicExtensions ? "public" : "internal";
+        sb.AppendLine($"{accessibility} static partial class {SymbolUtilities.BuildExtensionClassName(controlType)}");
         sb.AppendLine("{");
 
         foreach (var group in generatedGroups)
