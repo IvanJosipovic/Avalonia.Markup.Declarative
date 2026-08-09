@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using Declarative.Avalonia.AgentTools.Tools;
 using Microsoft.AspNetCore.Builder;
@@ -7,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Server;
 
 namespace Declarative.Avalonia.AgentTools;
 
@@ -64,6 +68,8 @@ internal sealed class AgentInspectorServer
             if (_options.EnableInteraction)
                 mcp.WithTools<InteractionTools>();
 
+            RegisterHostTools(mcp);
+
             var app = builder.Build();
 
             // Observe agent activity so the app can show a live "agent connected" status. Runs for every
@@ -101,5 +107,88 @@ internal sealed class AgentInspectorServer
         {
             Debug.WriteLine($"[AgentInspector] failed to start on {_options.EndpointUrl}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Adds the application's own tool types (<see cref="AgentInspectorOptions.WithTools{TTools}"/>).
+    /// </summary>
+    /// <remarks>
+    /// The tools are built here rather than handed to <c>WithTools&lt;T&gt;()</c> because the SDK would
+    /// construct instance tool types from <em>this</em> host's DI container, which knows nothing about
+    /// the application's services. Instead each type is instantiated once from
+    /// <see cref="AgentInspectorOptions.Services"/> — so a tool can take <c>AppState</c> or a command
+    /// service in its constructor — and its methods are bound to that instance.
+    /// </remarks>
+    private void RegisterHostTools(IMcpServerBuilder mcp)
+    {
+        foreach (var toolType in _options.ToolTypes)
+        {
+            if (AgentInspectorOptions.RequiresInteraction(toolType) && !_options.EnableInteraction)
+            {
+                Announce($"[AgentInspector] skipping host tools '{toolType.Name}': they are marked " +
+                         "[AgentInteractionTools] and EnableInteraction is off.");
+                continue;
+            }
+
+            try
+            {
+                mcp.WithTools(CreateHostTools(_options, toolType));
+            }
+            catch (Exception ex)
+            {
+                // One misconfigured host tool type must not take the whole inspector down: report it and
+                // keep the built-in tools working.
+                Announce($"[AgentInspector] could not register host tools '{toolType.FullName}': {Root(ex).Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Binds one host tool type's <c>[McpServerTool]</c> methods to a single instance built from the
+    /// application's service provider (static methods need no instance).
+    /// </summary>
+    internal static List<McpServerTool> CreateHostTools(AgentInspectorOptions options, Type toolType)
+    {
+        var methods = AgentInspectorOptions.GetToolMethods(toolType).ToList();
+        object? instance = null;
+
+        if (methods.Any(m => !m.IsStatic))
+        {
+            if (options.Services is { } services)
+            {
+                instance = ActivatorUtilities.CreateInstance(services, toolType);
+            }
+            else
+            {
+                // Without an app service provider the only thing we can build is a self-contained type.
+                // Say so explicitly — "no parameterless constructor" on its own would send the reader
+                // hunting for the wrong fix.
+                var parameterless = toolType.GetConstructor(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, binder: null, Type.EmptyTypes, modifiers: null);
+
+                instance = parameterless?.Invoke(Array.Empty<object?>())
+                           ?? throw new InvalidOperationException(
+                               $"'{toolType.Name}' has instance tool methods but no parameterless constructor, and no " +
+                               "service provider was given. Set AgentInspectorOptions.Services to your app's " +
+                               "IServiceProvider so its constructor dependencies can be injected.");
+            }
+        }
+
+        return methods
+            .Select(method => McpServerTool.Create(method, method.IsStatic ? null : instance))
+            .ToList();
+    }
+
+    private void Announce(string message)
+    {
+        Debug.WriteLine(message);
+        Console.WriteLine(message);
+    }
+
+    private static Exception Root(Exception ex)
+    {
+        while (ex.InnerException is not null)
+            ex = ex.InnerException;
+        return ex;
     }
 }

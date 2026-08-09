@@ -149,6 +149,188 @@ public static class ControlScreenshotService
     }
 
     /// <summary>
+    /// Captures a rectangular <paramref name="region"/> of a top-level, in the same absolute client-DIP
+    /// coordinates as hit-testing and the pointer tools (at 96 DPI one DIP is one captured pixel).
+    /// </summary>
+    /// <remarks>
+    /// The whole top-level is rendered and the region is then cut out of the pixel buffer. Cropping
+    /// rather than rendering a sub-visual is what makes an arbitrary rectangle — a slice of a custom
+    /// canvas that is not a control at all — capturable, and it keeps overlapping content (popups,
+    /// adorners) in the shot. The region is clamped to the window; a rectangle entirely outside it is
+    /// an error rather than a blank image.
+    /// </remarks>
+    public static CapturedImage CaptureRegionStable(TopLevel top, Rect region)
+    {
+        ArgumentNullException.ThrowIfNull(top);
+
+        var full = CaptureTopLevelStable(top);
+        var bounds = new PixelRect(0, 0, full.Size.Width, full.Size.Height);
+        var requested = ToPixelRect(region);
+        var clipped = bounds.Intersect(requested);
+
+        if (clipped.Width <= 0 || clipped.Height <= 0)
+            throw new InvalidOperationException(
+                $"The region [x={requested.X} y={requested.Y} w={requested.Width} h={requested.Height}] lies outside " +
+                $"the window, which is {bounds.Width}x{bounds.Height}. Use get_app_info or get_visual_tree to find valid coordinates.");
+
+        return Crop(full, clipped);
+    }
+
+    /// <summary>
+    /// Cuts <paramref name="region"/> (in pixels) out of an already-captured image.
+    /// </summary>
+    public static CapturedImage Crop(CapturedImage source, PixelRect region)
+    {
+        var sourceStride = source.Size.Width * 4;
+        var targetStride = region.Width * 4;
+        var bgra = new byte[targetStride * region.Height];
+
+        for (var y = 0; y < region.Height; y++)
+        {
+            Buffer.BlockCopy(
+                source.Bgra, (region.Y + y) * sourceStride + region.X * 4,
+                bgra, y * targetStride,
+                targetStride);
+        }
+
+        var size = new PixelSize(region.Width, region.Height);
+        return new CapturedImage(EncodePng(bgra, size), bgra, size);
+    }
+
+    /// <summary>
+    /// Resizes a capture to <paramref name="target"/>.
+    /// </summary>
+    /// <remarks>
+    /// Enlarging uses nearest-neighbour, which is not a stylistic choice: a pixel-art sprite or a
+    /// hairline border blurred by interpolation is unreadable, and the whole point of enlarging a
+    /// screenshot is to see the individual pixels. Shrinking box-averages instead, because
+    /// nearest-neighbour would drop thin strokes and one-pixel text entirely. Both run on the captured
+    /// buffer, so no re-render (and no renderer quirk) is involved.
+    /// </remarks>
+    public static CapturedImage Resample(CapturedImage source, PixelSize target)
+    {
+        if (target == source.Size)
+            return source;
+
+        var width = Math.Max(1, target.Width);
+        var height = Math.Max(1, target.Height);
+        var shrinking = width < source.Size.Width || height < source.Size.Height;
+        var bgra = shrinking
+            ? BoxDownscale(source, width, height)
+            : NearestUpscale(source, width, height);
+
+        var size = new PixelSize(width, height);
+        return new CapturedImage(EncodePng(bgra, size), bgra, size);
+    }
+
+    /// <summary>
+    /// Resolves the pixel size a capture should be delivered at. <paramref name="scale"/> multiplies
+    /// (2 = double size, 0.5 = half); <paramref name="maxWidth"/> shrinks proportionally so the result
+    /// is at most that wide, and never enlarges. Both are optional and <paramref name="maxWidth"/> is
+    /// applied after <paramref name="scale"/>, so an agent can ask to enlarge yet still cap the payload.
+    /// Returns null when the image should be delivered unchanged.
+    /// </summary>
+    public static PixelSize? ResolveTargetSize(PixelSize source, double? scale, int? maxWidth)
+    {
+        var width = (double)source.Width;
+        var height = (double)source.Height;
+
+        if (scale is { } factor && factor > 0 && Math.Abs(factor - 1) > 0.001)
+        {
+            width *= factor;
+            height *= factor;
+        }
+
+        if (maxWidth is { } cap && cap > 0 && width > cap)
+        {
+            height *= cap / width;
+            width = cap;
+        }
+
+        var target = new PixelSize(
+            Math.Max(1, (int)Math.Round(width)),
+            Math.Max(1, (int)Math.Round(height)));
+
+        return target == source ? null : target;
+    }
+
+    private static byte[] NearestUpscale(CapturedImage source, int width, int height)
+    {
+        var sourceStride = source.Size.Width * 4;
+        var targetStride = width * 4;
+        var bgra = new byte[targetStride * height];
+
+        for (var y = 0; y < height; y++)
+        {
+            var sourceY = Math.Min(source.Size.Height - 1, y * source.Size.Height / height);
+            var sourceRow = sourceY * sourceStride;
+            var targetRow = y * targetStride;
+
+            for (var x = 0; x < width; x++)
+            {
+                var sourceIndex = sourceRow + Math.Min(source.Size.Width - 1, x * source.Size.Width / width) * 4;
+                var targetIndex = targetRow + x * 4;
+                bgra[targetIndex] = source.Bgra[sourceIndex];
+                bgra[targetIndex + 1] = source.Bgra[sourceIndex + 1];
+                bgra[targetIndex + 2] = source.Bgra[sourceIndex + 2];
+                bgra[targetIndex + 3] = source.Bgra[sourceIndex + 3];
+            }
+        }
+
+        return bgra;
+    }
+
+    private static byte[] BoxDownscale(CapturedImage source, int width, int height)
+    {
+        var sourceStride = source.Size.Width * 4;
+        var targetStride = width * 4;
+        var bgra = new byte[targetStride * height];
+
+        for (var y = 0; y < height; y++)
+        {
+            var y0 = y * source.Size.Height / height;
+            var y1 = Math.Max(y0 + 1, (y + 1) * source.Size.Height / height);
+
+            for (var x = 0; x < width; x++)
+            {
+                var x0 = x * source.Size.Width / width;
+                var x1 = Math.Max(x0 + 1, (x + 1) * source.Size.Width / width);
+
+                long b = 0, g = 0, r = 0, a = 0;
+                var samples = 0;
+                for (var sy = y0; sy < y1; sy++)
+                {
+                    var row = sy * sourceStride;
+                    for (var sx = x0; sx < x1; sx++)
+                    {
+                        var i = row + sx * 4;
+                        b += source.Bgra[i];
+                        g += source.Bgra[i + 1];
+                        r += source.Bgra[i + 2];
+                        a += source.Bgra[i + 3];
+                        samples++;
+                    }
+                }
+
+                var target = y * targetStride + x * 4;
+                bgra[target] = (byte)(b / samples);
+                bgra[target + 1] = (byte)(g / samples);
+                bgra[target + 2] = (byte)(r / samples);
+                bgra[target + 3] = (byte)(a / samples);
+            }
+        }
+
+        return bgra;
+    }
+
+    private static PixelRect ToPixelRect(Rect region) =>
+        new(
+            (int)Math.Floor(region.X),
+            (int)Math.Floor(region.Y),
+            Math.Max(1, (int)Math.Ceiling(region.Width)),
+            Math.Max(1, (int)Math.Ceiling(region.Height)));
+
+    /// <summary>
     /// Encodes a raw BGRA8888 buffer as PNG (used to render diff/overlay images).
     /// </summary>
     public static byte[] EncodePng(byte[] bgra, PixelSize size)
@@ -221,6 +403,20 @@ public static class ControlScreenshotService
         return stream.ToArray();
     }
 
+    /// <remarks>
+    /// The raw buffer must really be BGRA, as <see cref="CapturedImage"/> promises: <see cref="Crop"/>,
+    /// <see cref="Resample"/> and the compare diff all rebuild a PNG from it through a
+    /// <see cref="PixelFormat.Bgra8888"/> <see cref="WriteableBitmap"/>, and the diff's marker color is a
+    /// BGRA constant.
+    /// <para>
+    /// <b>Which is why the copy goes through a locked framebuffer.</b> The
+    /// <c>CopyPixels(PixelRect, IntPtr, …)</c> overload copies in the bitmap's <em>own</em> format, and that
+    /// is platform-dependent — <c>Bgra8888</c> on Windows but <c>Rgba8888</c> on macOS — so reading it as
+    /// BGRA swapped red and blue in every image rebuilt from the buffer (a `screenshot_region` crop, any
+    /// scaled capture, the compare diff) while a directly-saved capture looked fine. Copying into a
+    /// framebuffer declared Bgra8888 makes the platform convert, so the invariant holds everywhere.
+    /// </para>
+    /// </remarks>
     private static CapturedImage Capture(RenderTargetBitmap bitmap)
     {
         var png = Encode(bitmap);
@@ -228,14 +424,13 @@ public static class ControlScreenshotService
         var stride = size.Width * 4;
         var bgra = new byte[stride * size.Height];
 
-        var handle = GCHandle.Alloc(bgra, GCHandleType.Pinned);
-        try
+        using var normalized = new WriteableBitmap(size, StandardDpi, PixelFormat.Bgra8888, AlphaFormat.Premul);
+        using (var frameBuffer = normalized.Lock())
         {
-            bitmap.CopyPixels(new PixelRect(0, 0, size.Width, size.Height), handle.AddrOfPinnedObject(), bgra.Length, stride);
-        }
-        finally
-        {
-            handle.Free();
+            bitmap.CopyPixels(frameBuffer);
+
+            for (var y = 0; y < size.Height; y++)
+                Marshal.Copy(IntPtr.Add(frameBuffer.Address, y * frameBuffer.RowBytes), bgra, y * stride, stride);
         }
 
         return new CapturedImage(png, bgra, size);

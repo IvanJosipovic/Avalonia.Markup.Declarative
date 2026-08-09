@@ -32,6 +32,7 @@ public sealed class AgentDemoView : ViewBase<AgentDemoViewModel>
     public const double SliderWidth = 240;
     public const double SliderHeight = 32;
     public const double ThumbWidth = 20;
+    public const double CanvasHeight = 80;
 
     public AgentDemoView() : base(new AgentDemoViewModel())
     {
@@ -115,6 +116,16 @@ public sealed class AgentDemoView : ViewBase<AgentDemoViewModel>
         };
         popup.Bind(Popup.IsOpenProperty, new Binding("AppState.UiState.ShowBrushSettings") { Mode = BindingMode.TwoWay });
 
+        // ── (d) Raw canvas: the Pix2d-shaped surface with hand-written pointer handling ──────────
+        var surface = new Border
+        {
+            Name = "CanvasSurface",
+            Width = SliderWidth,
+            Height = CanvasHeight,
+            Background = Brushes.DarkSlateGray,
+        };
+        WireCanvas(surface, vm);
+
         var content = new StackPanel
         {
             Name = "DemoRoot",
@@ -126,6 +137,7 @@ public sealed class AgentDemoView : ViewBase<AgentDemoViewModel>
         content.Children.Add(editor);
         content.Children.Add(openByCommand);
         content.Children.Add(openByClick);
+        content.Children.Add(surface);
         content.Children.Add(popup);
 
         // ── (c) UI-scale wrapper ──────────────────────────────────────────────────────────────────
@@ -135,6 +147,45 @@ public sealed class AgentDemoView : ViewBase<AgentDemoViewModel>
             LayoutTransform = new ScaleTransform(1.25, 1.25),
             Child = content,
         };
+    }
+
+    /// <summary>
+    /// The custom-canvas scenario: a plain <see cref="Border"/> that reads everything a drawing surface
+    /// reads — click count, wheel deltas, pointer type, pressure, the eraser end — plus a pinch
+    /// recognizer. None of it is reachable through automation peers, so it only records anything if the
+    /// synthesized input is genuinely indistinguishable from a device's.
+    /// </summary>
+    private static void WireCanvas(Border surface, AgentDemoViewModel vm)
+    {
+        surface.PointerPressed += (_, e) =>
+        {
+            var point = e.GetCurrentPoint(surface);
+            vm.LastClickCount = e.ClickCount;
+            vm.LastPointerType = point.Pointer.Type;
+            vm.LastPressure = point.Properties.Pressure;
+            vm.LastIsEraser = point.Properties.IsEraser;
+            vm.LastIsInverted = point.Properties.IsInverted;
+            vm.ContactCount++;
+            e.Handled = true;
+        };
+
+        surface.PointerReleased += (_, _) => vm.ContactCount = Math.Max(0, vm.ContactCount - 1);
+
+        surface.PointerWheelChanged += (_, e) =>
+        {
+            vm.WheelEventCount++;
+            vm.AccumulatedWheelDelta += e.Delta;
+            vm.LastWheelDelta = e.Delta;
+            e.Handled = true;
+        };
+
+        var pinch = new PinchGestureRecognizer();
+        surface.GestureRecognizers.Add(pinch);
+        surface.AddHandler(InputElement.PinchEvent, (_, e) =>
+        {
+            vm.PinchEventCount++;
+            vm.LastPinchScale = e.Scale;
+        });
     }
 
     private static void WireSlider(Border slider, Border track, Border thumb, AgentDemoViewModel vm)
@@ -205,6 +256,39 @@ public sealed class AgentDemoViewModel : INotifyPropertyChanged
         get => _lastKey;
         set => Set(ref _lastKey, value, nameof(LastKey));
     }
+
+    /// <summary>Click streak of the last press on the canvas — 2 proves a real double click arrived.</summary>
+    public int LastClickCount { get; set; }
+
+    /// <summary>Device the last canvas press claimed to come from (Mouse/Pen/Touch).</summary>
+    public PointerType LastPointerType { get; set; } = PointerType.Mouse;
+
+    /// <summary>Tip pressure reported by the last canvas press.</summary>
+    public float LastPressure { get; set; }
+
+    /// <summary>Whether the last canvas press came from a pen's eraser end.</summary>
+    public bool LastIsEraser { get; set; }
+
+    /// <summary>Whether the last canvas press came from an inverted pen.</summary>
+    public bool LastIsInverted { get; set; }
+
+    /// <summary>Contacts currently down on the canvas — &gt;1 means real multi-touch.</summary>
+    public int ContactCount { get; set; }
+
+    /// <summary>How many wheel events the canvas received (a touchpad burst is several).</summary>
+    public int WheelEventCount { get; set; }
+
+    /// <summary>Sum of every wheel delta, so a split precision burst still totals the requested amount.</summary>
+    public Vector AccumulatedWheelDelta { get; set; }
+
+    /// <summary>The most recent single wheel delta (fractional for a touchpad, whole for a wheel).</summary>
+    public Vector LastWheelDelta { get; set; }
+
+    /// <summary>How many PinchEvents the recognizer raised.</summary>
+    public int PinchEventCount { get; set; }
+
+    /// <summary>Scale of the last pinch — &gt;1 for a spread, &lt;1 for a pinch.</summary>
+    public double LastPinchScale { get; set; }
 
     /// <summary>Nested app state, so the real popup-open flag lives at AppState.UiState.ShowBrushSettings
     /// rather than on the root view-model (the P3 scenario).</summary>

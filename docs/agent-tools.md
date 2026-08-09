@@ -60,8 +60,11 @@ Options:
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `Port` | `5599` | Loopback TCP port for the MCP endpoint. |
-| `EnableInteraction` | `false` | Registers the tier-2 tools (`tap`, `drag`, `pointer_press`/`pointer_move`/`pointer_release`, `invoke`, `set_window_size`, `set_theme`, `click_at`, `open_popup`, `list_bindable`, `set_view_model`, `invoke_command`). |
+| `EnableInteraction` | `false` | Registers the tier-2 tools (`tap`, `drag`, `pointer_press`/`pointer_move`/`pointer_release`, `pointer_wheel`, `touch_press`/`touch_move`/`touch_release`, `pinch`, `invoke`, `set_window_size`, `set_theme`, `click_at`, `open_popup`, `list_bindable`, `set_view_model`, `invoke_command`), and any host tool type marked `[AgentInteractionTools]`. |
 | `EnableSourceTagging` | `false` | Stamps each `.Name(...)`ed control with its `file:line` so `get_source` can point at the exact line. |
+| `CaptureLogs` | `true` | Buffers the app's log output in memory for `get_logs`. |
+| `CaptureConsole` | `true` | Whether `CaptureLogs` also tees `Console.Out`/`Console.Error`. Transparent — the original writers keep receiving everything. |
+| `Services` | `null` | Your app's `IServiceProvider`, used to construct host tool types — see [Your own tools](#your-own-tools-p2). |
 
 ```csharp
 .UseAgentInspector(o =>
@@ -179,22 +182,28 @@ is the useful signal for an indicator. `RequestCount` and `LastActivity` are als
 | Tool | Args | Returns |
 | --- | --- | --- |
 | `layout_audit` | `rootName?` | Automated layout lint — see [`layout_audit`](#layout_audit). |
-| `screenshot_window` | `windowId?`, `annotate?`, `filter?` | PNG of a window; `annotate=true` frames and labels every named control. |
-| `screenshot_control` | `name`, `mode?` | PNG of one control. `mode` = `isolated` (default) or `in_context`. |
+| `screenshot_window` | `windowId?`, `annotate?`, `filter?`, `scale?`, `maxWidth?` | PNG of a window; `annotate=true` frames and labels every named control — see [Screenshot regions and scaling](#screenshot-regions-and-scaling). |
+| `screenshot_control` | `name`, `mode?`, `scale?`, `maxWidth?` | PNG of one control. `mode` = `isolated` (default) or `in_context`. |
+| `screenshot_region` | `x`, `y`, `width`, `height`, `windowId?`, `scale?`, `maxWidth?` | PNG of an arbitrary rectangle, in the shared client-DIP frame — the way to look **inside** a custom canvas. |
 | `highlight` | `selector?`, `action?`, `color?` | Draws a frame around the match(es) and returns an in-context screenshot — see [`highlight`](#highlight). |
 | `compare_screenshots` | `idA?`, `idB?` | Pixel-diffs two captures (red diff image + % changed + region) — see [`compare_screenshots`](#compare_screenshots). |
 | `list_screenshots` | — | Lists recent screenshot ids/labels/sizes for `compare_screenshots`. |
 | `wait_for` | `selector`, `condition`, `timeoutMs?` | Waits for a condition — see [`wait_for` and `wait_idle`](#wait_for-and-wait_idle). |
 | `wait_idle` | — | Waits until the UI thread has drained (layout/binding/render). |
 | `get_errors` | `sinceTimestamp?` | Recent build + binding + converter + **runtime** errors (incl. exceptions in event handlers). |
+| `get_logs` | `sinceTimestamp?`, `level?`, `filter?`, `limit?` | The app's raw log output — Avalonia's `Logger` plus stdout/stderr — see [`get_logs`](#get_logs). |
+| `get_render_stats` | `windowId?`, `sampleMs?` | Measured fps, last layout pass count/duration, visual count, size and render scaling — see [`get_render_stats`](#get_render_stats). |
 
 **Act** (tier-2, off unless `EnableInteraction`):
 
 | Tool | Args | Returns |
 | --- | --- | --- |
-| `tap` ⚠️ | `x`, `y`, `button?`, `modifiers?`, `windowId?` | **Real** synthesized click (move→press→release) at an absolute client-DIP point — drives any control, peer or not — see [Real input synthesis](#real-input-synthesis-p1). |
-| `drag` ⚠️ | `x1`, `y1`, `x2`, `y2`, `button?`, `steps?`, `holdMs?`, `modifiers?`, `windowId?` | **Real** press-drag-release (scrub a custom slider, move a thumb, draw). |
-| `pointer_press` / `pointer_move` / `pointer_release` ⚠️ | `x`, `y`, `button?`/`modifiers?`, `windowId?` | **Real** low-level pointer steps; press begins a gesture whose capture is held across the calls. |
+| `tap` ⚠️ | `x`, `y`, `button?`, `modifiers?`, `windowId?`, `count?`, `pointerType?`, `pressure?`, `inverted?` | **Real** synthesized click (move→press→release) at an absolute client-DIP point — drives any control, peer or not. `count=2` is a genuine double click — see [Real input synthesis](#real-input-synthesis-p1). |
+| `drag` ⚠️ | `x1`, `y1`, `x2`, `y2`, `button?`, `steps?`, `holdMs?`, `modifiers?`, `windowId?`, `pointerType?`, `pressure?`, `inverted?` | **Real** press-drag-release (scrub a custom slider, move a thumb, draw a pressure-sensitive stroke). |
+| `pointer_press` / `pointer_move` / `pointer_release` ⚠️ | `x`, `y`, `button?`/`modifiers?`, `windowId?`, `pointerType?`, `pressure?`, `inverted?` | **Real** low-level pointer steps; press begins a gesture whose capture is held across the calls. |
+| `pointer_wheel` ⚠️ | `x`, `y`, `dx?`, `dy?`, `modifiers?`, `windowId?`, `precision?` | **Real** wheel event in notches at a point (zoom/scroll a canvas); `precision=true` emulates a touchpad. |
+| `touch_press` / `touch_move` / `touch_release` ⚠️ | `touchId`, `x`, `y`, `pressure?`, `modifiers?`, `windowId?` | **Real** touch contacts with explicit ids, so several fingers can be down at once. |
+| `pinch` ⚠️ | `cx`, `cy`, `fromDistance`, `toDistance`, `steps?`, `modifiers?`, `windowId?` | A complete two-finger pinch/spread that raises `PinchEvent`. |
 | `invoke` ⚠️ | `name?`, `action`, `value?` | Remote control via UI Automation (`key`/`type` now send **real** input) — see [The `invoke` actions](#the-invoke-actions). |
 | `set_window_size` ⚠️ | `width`, `height`, `windowId?` | Resizes a window to test responsive layout; returns resulting + previous client size. |
 | `set_theme` ⚠️ | `variant` | Switches theme (`Light`/`Dark`/`Default`) to verify both. |
@@ -457,6 +466,174 @@ drag 40 300 210 300              # scrub a custom slider left→right
 pointer_press 40 300 ; pointer_move 210 300 ; pointer_release 210 300
 ```
 
+### Double click
+
+`ClickCount` is not something the event carries from the caller — Avalonia counts a click *streak* on the
+input device, resetting it when the gap exceeds the platform double-click time or the point moves further
+than the platform double-click size. Two separate `tap` calls therefore never add up to a double click,
+however fast they arrive.
+
+`tap(x, y, count: 2)` sends both presses through the **same** device instance, at the identical point,
+microseconds apart — so neither guard trips and the handler really sees `e.ClickCount == 2` (and
+`DoubleTapped` fires). `count` accepts 1–3. Every `tap` clears the streak first, so a plain single tap is
+always `ClickCount == 1` no matter how quickly it follows the previous one.
+
+```
+tap 300 240 count=2              # enter a context / open an item by double-clicking it
+```
+
+### Wheel and touchpad
+
+`pointer_wheel(x, y, dx, dy)` raises a real `PointerWheelChanged`. Deltas are in **notches**, exactly like
+`PointerWheelEventArgs.Delta`: `dy=1` is one detent away from you, `dy=-1` towards you, `dx` scrolls
+horizontally. The pointer is moved to `(x, y)` first, because zoom-at-cursor code reads the event's
+position and not only its delta — this is what makes it usable on a zoomable canvas rather than only on a
+`ScrollViewer`.
+
+`precision: true` emulates a precision touchpad instead: the same total delta arrives as a burst of small
+**fractional** steps. Code that tells the two devices apart by the shape of the deltas can only be
+exercised this way.
+
+```
+pointer_wheel 640 400 dy=3               # zoom in three notches at the cursor
+pointer_wheel 640 400 dy=-1 modifiers=Ctrl
+pointer_wheel 640 400 dy=1 precision=true  # same amount, as a touchpad burst
+```
+
+### Pen and touch
+
+`tap`, `drag` and the `pointer_*` tools take a `pointerType` of `mouse` (default), `pen` or `touch`, plus
+`pressure` (0–1) and `inverted`. This reaches a whole class of logic that otherwise only a tablet can
+exercise: pressure-sensitive brushes, eraser-on-invert, touch-only gesture recognizers. `inverted: true`
+sets both `IsInverted` and `IsEraser`, because a real inverted pen reports both and apps check one or the
+other. An unknown `pointerType` is an error rather than a silent downgrade to mouse.
+
+For more than one finger use `touch_press`/`touch_move`/`touch_release`, which take an explicit `touchId`
+so several contacts are down at once — a two-finger tap, a two-finger pan. `pinch` packages the common
+spread/pinch as a single call, since a recognizer needs both fingers moving together over enough
+intermediate steps to lock on.
+
+```
+tap 640 400 pointerType=pen pressure=0.3         # a light brush dab
+drag 100 100 400 400 pointerType=pen pressure=0.9 inverted=true   # erase a stroke
+touch_press 1 200 300 ; touch_press 2 600 300 ; touch_release 1 200 300 ; touch_release 2 600 300
+pinch 640 400 from=120 to=360                    # spread to zoom in 3x
+```
+
+## Screenshot regions and scaling
+
+A full-window capture of a 2560×1440 window is an expensive answer in tokens, and a 16×16 sprite inside it
+is unreadable anyway. Three knobs fix both ends:
+
+- `screenshot_region(x, y, width, height)` captures an arbitrary rectangle in the same
+  [absolute client-DIP frame](#coordinate-frame) as `hit_test`/`click_at`, so you can shoot exactly the
+  area you just interacted with. This is the tool for looking **inside** a custom canvas, which is one
+  opaque control as far as `get_visual_tree` is concerned. Overlapping content (popups, adorners) stays in
+  the shot, because the window is rendered and then cropped.
+- `scale` multiplies the delivered image. Enlarging uses **nearest-neighbour** — an interpolated
+  enlargement of pixel art or a hairline border is blurred mush, and seeing the individual pixels is the
+  entire point of zooming in.
+- `maxWidth` caps the delivered width, shrinking proportionally (box-averaged, so thin strokes and small
+  text survive) and never enlarging. It is applied after `scale`, so you can zoom in and still cap the
+  payload.
+
+Regions go into the same screenshot store as full captures, so `compare_screenshots` works on them —
+capture the same rectangle before and after an edit to see precisely what changed.
+
+```
+screenshot_region 400 200 32 32 scale=8      # inspect a sprite pixel by pixel
+screenshot_window maxWidth=1280              # a cheap overview of a 4K window
+```
+
+## `get_logs`
+
+`get_errors` reports only the curated build/binding/converter/runtime **errors**. `get_logs` returns the
+raw stream: everything written through `Avalonia.Logging.Logger` plus everything printed to
+stdout/stderr, buffered in memory (4000 lines, oldest dropped).
+
+It exists for the most common working setup — the developer runs the app from an IDE for hot reload, and
+the agent attaches over MCP with no terminal to read. Both hooks are pass-through decorators: the previous
+log sink and the real console keep receiving everything, so the developer's own output is unaffected.
+
+Filter with `sinceTimestamp` (ISO-8601 — take it from just before an action), `level`
+(`verbose|debug|information|warning|error|fatal`, meaning that level and above) and `filter` (a
+case-insensitive substring of the message or the Avalonia log area). `limit` (default 200) returns the
+most recent matches.
+
+Avalonia's own logging is captured from **`Warning`** up. That threshold is not just about noise: a log
+sink is asked `IsEnabled(level, area)` before Avalonia formats a message, so lowering it *switches on*
+framework tracing the app was not paying for — Avalonia logs every layout pass at `Information`, which in
+a render-heavy app both costs time and floods the buffer. Console output is captured at every level,
+because that costs nothing. Lower the threshold deliberately with `AppLogBuffer.MinimumLevel`, and put it
+back afterwards; `get_logs` says so when you ask for a level below it.
+
+Turn the whole thing off with `CaptureLogs = false`, or keep the log sink but leave the process-global
+console alone with `CaptureConsole = false`.
+
+## `get_render_stats`
+
+`get_render_stats(windowId?, sampleMs?)` reports what a window costs to draw: measured frame rate, the
+last layout run's pass count and duration, the number of visuals in the tree, client/frame size and render
+scaling. It is for catching a performance regression without reaching for a profiler — record the numbers,
+make the change, compare.
+
+It is purely observational. Nothing is switched on to gather the numbers, so an idle window honestly
+reports 0 fps (nothing asked it to redraw) rather than being spun up by the act of measuring it, and an
+enabled debug overlay is reported but never enabled. `sampleMs` (default 500, max 5000) is how long frames
+are counted; pass 0 to skip frame counting.
+
+## Your own tools (P2)
+
+The built-in tools are generic by construction, and that is their limit: to the inspector a custom drawing
+surface is one opaque `Control` filling the window. The scene, layers, frames, selection and pixels inside
+it are reachable only through tools the application writes itself.
+
+Register them with `WithTools<T>()`. Instance methods are invoked on a single instance built once from
+`Services`, so a tool takes the app's real services in its constructor:
+
+```csharp
+[McpServerToolType]
+public sealed class SpriteTools
+{
+    private readonly AppState _state;
+
+    public SpriteTools(AppState state) => _state = state;
+
+    [McpServerTool(Name = "get_sprite_info", ReadOnly = true), Description(
+        "Returns the open sprite's size, frame count and the selected layer.")]
+    public string GetSpriteInfo() =>
+        $"{_state.Sprite.Size}, {_state.Sprite.Frames.Count} frame(s), layer '{_state.SelectedLayer.Name}'";
+}
+
+.UseAgentInspector(o =>
+{
+    o.EnableInteraction = true;
+    o.Services = serviceProvider;   // your app's container
+    o.WithTools<SpriteTools>();
+})
+```
+
+Host tools are gated **per type**, not as a block, because an app usually has read-only tools worth
+exposing all the time and state-changing ones that belong behind the same switch as `tap` and `invoke`.
+An un-attributed type is registered whenever the inspector runs; mark the state-changing ones:
+
+```csharp
+[McpServerToolType]
+[AgentInteractionTools]        // registered only when EnableInteraction is set
+public sealed class SpriteEditTools { /* … */ }
+```
+
+Notes:
+
+- Write the `[Description]` carefully. It is the only documentation the agent gets, and it is what decides
+  whether the tool is called correctly — or at all.
+- `Services` is needed only for tool types with constructor dependencies; a parameterless type or one with
+  purely static tool methods works without it.
+- Registering a type with no `[McpServerTool]` methods throws at startup rather than leaving the agent to
+  discover the tool missing later.
+- A host tool type that fails to construct is reported to the console and skipped; the built-in tools keep
+  working.
+
 > **Addressing text inputs.** A `Button`/`TabItem`/`ToggleButton` exposes its caption as its automation
 > name, so it is addressable by its visible text. A `TextBox` does **not** — its automation name is
 > empty — so `set`/`type`/`key` against a specific text box need it to carry a `Name`. Name the inputs
@@ -580,21 +757,25 @@ screenshot_control BrushSettings             # now captures the realized content
   that is expected behaviour.
 - **Loopback only.** The server binds strictly to `127.0.0.1`. Screenshots can contain sensitive data
   — another reason it is loopback + debug-only.
-- **The tier-2 tools are off by default.** `invoke`, `set_window_size`, `set_theme`, `click_at`,
-  `set_view_model` and `invoke_command` are a remote-control surface — they change app state (click,
-  select, toggle, set values, resize, switch theme, write view-model state, run commands). They are
-  registered only when you opt in with `EnableInteraction = true`, and like the rest of the inspector they
-  are loopback + debug-only.
+- **The tier-2 tools are off by default.** `invoke`, `set_window_size`, `set_theme`, `click_at`, the
+  pointer/wheel/touch synthesis tools, `set_view_model` and `invoke_command` are a remote-control surface
+  — they change app state (click, select, toggle, set values, scroll, zoom, draw, resize, switch theme,
+  write view-model state, run commands). They are registered only when you opt in with
+  `EnableInteraction = true`, and like the rest of the inspector they are loopback + debug-only. Host tool
+  types marked `[AgentInteractionTools]` follow the same switch.
 - **`highlight` and annotated screenshots add a transient overlay.** They mutate the visual tree with a
   frame adorner (cleared afterwards / by `action='clear'`); they never change app logic or state.
 - **`hit_test` uses a transform-aware geometric hit test** (point-in-transformed-bounds over the visual
   tree), consistent with the absolute frame `get_visual_tree` reports. Real input (`tap`/`drag`/
   `pointer_*`/`click_at`) instead routes through the compositor's own hit test, so it respects clip
   geometry and z-order exactly as a device would.
-- **Screenshots wait for a rendered frame.** `screenshot_window`/`screenshot_control` drain queued
-  layout/render work and, if the captured frame is degenerate (a single flat color — captured before the
-  layout settled), force a layout pass and retry once, so a capture right after opening a popup or
-  switching state isn't an empty/dark image.
+- **Screenshots wait for a rendered frame.** `screenshot_window`/`screenshot_control`/`screenshot_region`
+  drain queued layout/render work and, if the captured frame is degenerate (a single flat color —
+  captured before the layout settled), force a layout pass and retry once, so a capture right after
+  opening a popup or switching state isn't an empty/dark image.
+- **`get_logs` replaces `Console.Out`/`Console.Error` process-wide.** The replacement is a transparent
+  tee — the original writers still receive everything — but if that is unwelcome, set
+  `CaptureConsole = false` to keep only the Avalonia log sink, or `CaptureLogs = false` for neither.
 - **`get_data_context`/`get_properties` read via reflection** and call property getters; a getter with
   side effects will run, and one that throws is reported inline rather than aborting.
 - **Component listing needs hot-reload tracking**, which is enabled by default. If you call

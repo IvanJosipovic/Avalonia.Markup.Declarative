@@ -1,0 +1,96 @@
+name: Publish NuGet packages
+
+# Releases are cut by pushing a v<version> tag (see the release flow in the repo docs).
+# workflow_dispatch is kept for re-running a failed publish without moving the tag.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CONFIGURATION: Release
+  NUGET_SOURCE: https://api.nuget.org/v3/index.json
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  publish:
+    # Windows matches the local dev/release environment the packages are built in today.
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+      # Required for Trusted Publishing: lets the job request a GitHub OIDC token.
+      # Without it NuGet/login gets no token and the push fails.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Resolve and verify version
+        id: version
+        shell: pwsh
+        run: |
+          $props = [xml](Get-Content Directory.Build.props -Raw)
+          $version = ($props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1).Trim()
+          if (-not $version) { throw 'No <Version> found in Directory.Build.props' }
+
+          # The tag is the source of truth for what gets published, so refuse to publish a tag
+          # that disagrees with the version baked into the packages.
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $expected = "v$version"
+            if ('${{ github.ref_name }}' -ne $expected) {
+              throw "Tag '${{ github.ref_name }}' does not match Directory.Build.props version ($expected)"
+            }
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Publishing version $version"
+
+      - name: Build
+        run: dotnet build src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION
+
+      - name: Test
+        run: dotnet test src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION --no-build
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          # The three packable projects. Templates lives outside the solution, so it is packed by path.
+          dotnet pack src/Avalonia.Markup.Declarative/Avalonia.Markup.Declarative.csproj -c $env:CONFIGURATION -o artifacts
+          dotnet pack src/Declarative.Avalonia.AgentTools/Declarative.Avalonia.AgentTools.csproj -c $env:CONFIGURATION -o artifacts
+          dotnet pack Templates/Declarative.Avalonia.Templates/Declarative.Avalonia.Templates.csproj -c $env:CONFIGURATION -o artifacts
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nupkg-${{ steps.version.outputs.version }}
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+
+      # Exchange the OIDC token for a temporary nuget.org API key (valid 1 hour, single use),
+      # immediately before the push so it cannot expire mid-run.
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push packages
+        shell: pwsh
+        run: |
+          # Enumerate explicitly: dotnet nuget push does not expand the glob itself on Windows.
+          $packages = Get-ChildItem artifacts/*.nupkg
+          if (-not $packages) { throw 'No .nupkg found in artifacts/' }
+
+          foreach ($package in $packages) {
+            dotnet nuget push $package.FullName `
+              --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} `
+              --source $env:NUGET_SOURCE `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "Push failed for $($package.Name)" }
+          }

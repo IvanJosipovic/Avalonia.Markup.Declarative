@@ -10,11 +10,11 @@
 		<PackageType>Template</PackageType>
 		<PackageId>Declarative.Avalonia.Templates</PackageId>
 		<Title>Declarative.Avalonia Templates</Title>
-		<Authors>Avalonia Team</Authors>
+		<Authors>Avalonia Community</Authors>
 		<Description>Project templates for building Avalonia desktop apps with Avalonia.Markup.Declarative.</Description>
 		<PackageTags>dotnet-new;template;avalonia;avaloniaui;declarative;csharp</PackageTags>
-		<PackageProjectUrl>https://github.com/AvaloniaUI/Avalonia.Markup.Declarative</PackageProjectUrl>
-		<RepositoryUrl>https://github.com/AvaloniaUI/Avalonia.Markup.Declarative</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/AvaloniaCommunity/Avalonia.Markup.Declarative</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/AvaloniaCommunity/Avalonia.Markup.Declarative</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

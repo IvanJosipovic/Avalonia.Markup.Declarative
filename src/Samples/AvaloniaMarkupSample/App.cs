@@ -2,11 +2,20 @@
 using AvaloniaMarkupSample;
 #if DEBUG
 using Declarative.Avalonia.AgentTools;
+using Microsoft.Extensions.DependencyInjection;
 #endif
 
 [assembly: GenerateMarkupExtensionsForAvalonia]
 
 var lifetime = new ClassicDesktopStyleApplicationLifetime { Args = args, ShutdownMode = ShutdownMode.OnLastWindowClose };
+
+#if DEBUG
+// Stands in for the app's own DI container: the inspector builds host tool types from it, so a tool can
+// take the app's real services in its constructor.
+var services = new ServiceCollection()
+    .AddSingleton(new SampleSession { ProjectName = "Avalonia markup samples" })
+    .BuildServiceProvider();
+#endif
 
 var appBuilder = AppBuilder.Configure<Application>()
     .UsePlatformDetect()
@@ -23,7 +32,15 @@ var appBuilder = AppBuilder.Configure<Application>()
     // EnableInteraction turns on the tier-2 'invoke' remote-control tool (click/select/set/keys etc).
     // It is OFF by default in the package; this sample opts in deliberately so the interaction tools
     // can be exercised end-to-end. Loopback-only and Debug-only, with a startup warning printed.
-    .UseAgentInspector(o => o.EnableInteraction = true)
+    // The two WithTools calls add the sample's own tools: SampleSessionTools is read-only and always
+    // registered, SampleSessionEditTools is marked [AgentInteractionTools] and follows EnableInteraction.
+    .UseAgentInspector(o =>
+    {
+        o.EnableInteraction = true;
+        o.Services = services;
+        o.WithTools<SampleSessionTools>();
+        o.WithTools<SampleSessionEditTools>();
+    })
 #endif
     .SetupWithLifetime(lifetime);
 

@@ -1,6 +1,6 @@
 ﻿using ReactiveUI;
+using ReactiveUI.Primitives;
 using ReactiveUI.SourceGenerators;
-using System.Reactive;
 
 namespace ReactiveSample.ViewModels;
 
@@ -14,10 +14,10 @@ public partial class MainViewModel : ReactiveObject, IScreen
     public RoutingState Router { get; } = new();
 
     // The command that navigates a user to first view model.
-    public ReactiveCommand<Unit, IRoutableViewModel> GoNext { get; }
+    public ReactiveCommand<RxVoid, IRoutableViewModel> GoNext { get; }
 
     // The command that navigates a user back.
-    public ReactiveCommand<Unit, IRoutableViewModel> GoBack => Router.NavigateBack;
+    public ReactiveCommand<RxVoid, IRoutableViewModel> GoBack => Router.NavigateBack;
 
     public MainViewModel()
     {

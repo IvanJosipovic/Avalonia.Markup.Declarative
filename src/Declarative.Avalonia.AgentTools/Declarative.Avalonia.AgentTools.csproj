@@ -11,11 +11,11 @@
 		     stays aligned with the Avalonia.Markup.Declarative it inspects. -->
 		<PackageId>Declarative.Avalonia.AgentTools</PackageId>
 		<Title>Declarative.Avalonia AgentTools</Title>
-		<Authors>Avalonia Team</Authors>
+		<Authors>Avalonia Community</Authors>
 		<Description>In-process MCP (Model Context Protocol) inspector for AI agents building UI with Avalonia.Markup.Declarative. In a debug build it exposes the running app to an agent over loopback: visual-tree dumps with bounds, window/control screenshots, the active component list, and build/binding errors. Debug/dev only — do not ship in Release.</Description>
 		<PackageTags>avalonia;avaloniaui;declarative;mcp;ai;agent;agentic;diagnostics;inspector;screenshot</PackageTags>
-		<PackageProjectUrl>https://github.com/AvaloniaUI/Avalonia.Markup.Declarative</PackageProjectUrl>
-		<RepositoryUrl>https://github.com/AvaloniaUI/Avalonia.Markup.Declarative</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/AvaloniaCommunity/Avalonia.Markup.Declarative</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/AvaloniaCommunity/Avalonia.Markup.Declarative</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

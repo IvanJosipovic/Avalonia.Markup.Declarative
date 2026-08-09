@@ -19,20 +19,32 @@ the feedback loop while iterating on a view:
   reports how the control can be driven: automation-invokable / focusable / raw-pointer-only)
 - `layout_audit` — automated layout lint (zero-size, off-screen, overlap, out-of-parent, text-clipped)
 - `list_components` — active declarative views
-- `screenshot_window` (with `annotate`) / `screenshot_control` — PNG screenshots (image content blocks)
+- `screenshot_window` (with `annotate`) / `screenshot_control` / `screenshot_region` — PNG screenshots
+  (image content blocks); `scale` enlarges with nearest-neighbour so pixel art stays crisp, `maxWidth`
+  caps the payload, and `screenshot_region` crops an arbitrary rectangle — the way to look *inside* a
+  custom canvas that the visual tree sees as one opaque control
 - `compare_screenshots` / `list_screenshots` — before/after pixel diff (red diff image + % changed)
 - `highlight` — draw a frame around a control (or all of a type) and screenshot it; `action='clear'` clears
 - `wait_for` / `wait_idle` — sync after an interaction or hot reload
 - `get_errors` — recent build / binding / converter / runtime errors (incl. exceptions in handlers)
-- `tap`, `drag`, `pointer_press`/`pointer_move`/`pointer_release` — *(optional, off by default)*
-  **real** synthesized pointer input through Avalonia's input pipeline: works on custom controls with
-  hand-written pointer handlers and **no automation peer** (scrub a Border slider, move a thumb, draw)
+- `get_logs` — the app's raw log output (Avalonia's `Logger` **and** stdout/stderr) from an in-process ring
+  buffer, so you can read what the app printed even when the developer, not you, started the process
+- `get_render_stats` — measured fps, last layout pass count/duration, visual count, size and scaling:
+  catch a performance regression without a profiler
+- `tap`, `drag`, `pointer_press`/`pointer_move`/`pointer_release`, `pointer_wheel`,
+  `touch_press`/`touch_move`/`touch_release`, `pinch` — *(optional, off by default)* **real** synthesized
+  input through Avalonia's input pipeline: works on custom controls with hand-written pointer handlers and
+  **no automation peer** (scrub a Border slider, move a thumb, draw). Includes genuine double clicks
+  (`tap count=2` really produces `ClickCount == 2`), wheel/touchpad deltas in notches, pen pressure and
+  the inverted eraser end, and multi-finger gestures
 - `invoke`, `set_window_size`, `set_theme`, `click_at`, `open_popup`, `list_bindable`, `set_view_model`,
   `invoke_command` — *(optional, off by default)* remote control: invoke / select / select_item / toggle /
   set / expand / collapse / focus / scroll / scroll_by / context_menu / key / type (`key`/`type` send
   **real** input), plus resize, theme switch, pointer-first click-by-coordinate, open a closed popup, list
   a DataContext's bindable surface, and an escape hatch to set a view-model property or run an
   `ICommand`/method directly (structured, actionable errors; reach awkward states without restarting)
+- **your own tools** — register app-specific tools so the agent can reach what the generic ones cannot
+  (see below)
 
 ## Usage
 
@@ -44,6 +56,33 @@ var appBuilder = AppBuilder.Configure<App>()
 #endif
     .SetupWithLifetime(lifetime);
 ```
+
+## Your own tools
+
+To the inspector, a custom drawing surface is one opaque `Control` filling the window — the scene, layers
+and pixels inside it are reachable only through tools your app writes. Register them with
+`WithTools<T>()`; instance methods run on a single instance built from your `IServiceProvider`, so a tool
+can take the app's real services in its constructor:
+
+```csharp
+[McpServerToolType]
+public sealed class SpriteTools(AppState state)
+{
+    [McpServerTool(Name = "get_sprite_info", ReadOnly = true), Description(
+        "Returns the open sprite's size, frame count and the selected layer.")]
+    public string GetSpriteInfo() => $"{state.Sprite.Size}, {state.Sprite.Frames.Count} frame(s)";
+}
+
+.UseAgentInspector(o =>
+{
+    o.EnableInteraction = true;
+    o.Services = serviceProvider;
+    o.WithTools<SpriteTools>();
+})
+```
+
+Mark a state-changing tool type `[AgentInteractionTools]` and it is registered only when
+`EnableInteraction` is set, leaving your read-only tools available either way.
 
 ## Enable the MCP in your agent
 
@@ -109,7 +148,8 @@ AgentConnectionMonitor.StatusChanged += (_, e) =>
 
 > **Dev only.** Keep the call under `#if DEBUG`. This package pulls in the ASP.NET Core web stack and
 > a remote-control surface; it must not ship in Release. The server binds to loopback only, and
-> the tier-2 tools (`invoke`, `set_window_size`, `set_theme`, `click_at`, `set_view_model`,
-> `invoke_command`) stay disabled unless you set `EnableInteraction = true`.
+> the tier-2 tools (`invoke`, `set_window_size`, `set_theme`, `click_at`, the pointer/wheel/touch
+> synthesis tools, `set_view_model`, `invoke_command`) stay disabled unless you set
+> `EnableInteraction = true`.
 
 See the repository's `docs/agent-tools.md` for the full guide.

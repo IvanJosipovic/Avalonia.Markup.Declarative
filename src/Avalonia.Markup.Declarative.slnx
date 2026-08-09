@@ -1,0 +1,24 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Global/">
+    <File Path="../Directory.Build.props" />
+    <File Path="../global.json" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="Samples/AvaloniaMarkupSample/AvaloniaMarkupSample.csproj" />
+    <Project Path="Samples/DeclarativeComponentTemplate/DeclarativeComponentTemplate.csproj" />
+    <Project Path="Samples/ReactiveSample/ReactiveSample.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Avalonia.Markup.Declarative.Diagnostics.Tests/Avalonia.Markup.Declarative.Diagnostics.Tests.csproj" />
+    <Project Path="Avalonia.Markup.Declarative.Tests/Avalonia.Markup.Declarative.Tests.csproj" />
+    <Project Path="Declarative.Avalonia.AgentTools.Tests/Declarative.Avalonia.AgentTools.Tests.csproj" />
+  </Folder>
+  <Project Path="Avalonia.Markup.Declarative.SourceGenerator/Avalonia.Markup.Declarative.SourceGenerator.csproj" />
+  <Project Path="Avalonia.Markup.Declarative/Avalonia.Markup.Declarative.csproj" />
+  <Project Path="Declarative.Avalonia.AgentTools/Declarative.Avalonia.AgentTools.csproj" />
+</Solution>

@@ -357,41 +357,59 @@ public sealed class InteractionTools
         "the universal way to click, including custom controls with hand-written pointer handlers and no " +
         "automation peer. Focuses a focusable target and enters text-edit mode on a click-to-edit control, " +
         "just like a real click. Use get_visual_tree center=(x,y) or hit_test to find the point. " +
-        "Disabled unless EnableInteraction was set.")]
+        "Set count=2 for a genuine DOUBLE click (the presses share one device, so the handler really sees " +
+        "e.ClickCount==2 and DoubleTapped fires) — two separate tap calls do NOT add up to one. " +
+        "pointerType switches the emulated device: 'pen' (with pressure / inverted for the eraser end) or " +
+        "'touch'. Disabled unless EnableInteraction was set.")]
     public static Task<string> Tap(
         [Description("X in absolute client-DIP pixels.")] double x,
         [Description("Y in absolute client-DIP pixels.")] double y,
         [Description("Mouse button: Left (default) | Right | Middle.")] string? button = null,
         [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
-        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null,
+        [Description("Consecutive clicks: 1 (default), 2 for a double click, 3 for a triple.")] int count = 1,
+        [Description("Emulated device: mouse (default) | pen | touch.")] string? pointerType = null,
+        [Description("Pen/touch tip pressure 0..1. Omit for the device default (0.5).")] double? pressure = null,
+        [Description("Pen only: true for the inverted (eraser) end — sets IsInverted and IsEraser.")] bool inverted = false) =>
         AgentToolContext.RunToolAsync("tap", () =>
-            WithTop(windowId, top => InputSynthesizer.Tap(top, new Point(x, y), ParseButton(button), ParseModifiers(modifiers))));
+            WithPointer(windowId, pointerType, pressure, inverted, (top, spec) =>
+                InputSynthesizer.Tap(top, new Point(x, y), ParseButton(button), ParseModifiers(modifiers), count, spec)));
 
     [McpServerTool(Name = "pointer_press", Destructive = true), Description(
         "Synthesizes a REAL pointer button press at an absolute client-DIP coordinate and BEGINS a gesture " +
         "(the button stays held). Follow with pointer_move / pointer_release — capture is maintained across " +
         "the calls, so PointerMoved reports the button down (what drag/scrub handlers check). For a one-shot " +
-        "press+drag+release use drag; for a click use tap. Disabled unless EnableInteraction was set.")]
+        "press+drag+release use drag; for a click use tap. pointerType='pen' with a pressure lets you drive " +
+        "a pressure-sensitive brush; for more than one finger use touch_press instead (this tool holds a " +
+        "single gesture). Disabled unless EnableInteraction was set.")]
     public static Task<string> PointerPress(
         [Description("X in absolute client-DIP pixels.")] double x,
         [Description("Y in absolute client-DIP pixels.")] double y,
         [Description("Mouse button: Left (default) | Right | Middle.")] string? button = null,
         [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
-        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null,
+        [Description("Emulated device: mouse (default) | pen | touch.")] string? pointerType = null,
+        [Description("Pen/touch tip pressure 0..1. Omit for the device default (0.5).")] double? pressure = null,
+        [Description("Pen only: true for the inverted (eraser) end — sets IsInverted and IsEraser.")] bool inverted = false) =>
         AgentToolContext.RunToolAsync("pointer_press", () =>
-            WithTop(windowId, top => InputSynthesizer.PointerPress(top, new Point(x, y), ParseButton(button), ParseModifiers(modifiers))));
+            WithPointer(windowId, pointerType, pressure, inverted, (top, spec) =>
+                InputSynthesizer.PointerPress(top, new Point(x, y), ParseButton(button), ParseModifiers(modifiers), spec)));
 
     [McpServerTool(Name = "pointer_move", Destructive = true), Description(
         "Synthesizes a REAL pointer move to an absolute client-DIP coordinate. During a gesture started by " +
-        "pointer_press the held button is carried (drag); otherwise it is a hover move. Disabled unless " +
-        "EnableInteraction was set.")]
+        "pointer_press the held button and the device it began with are carried (drag); otherwise it is a " +
+        "hover move. Pass a pressure to vary a pen stroke mid-drag. Disabled unless EnableInteraction was set.")]
     public static Task<string> PointerMove(
         [Description("X in absolute client-DIP pixels.")] double x,
         [Description("Y in absolute client-DIP pixels.")] double y,
         [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
-        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null,
+        [Description("Emulated device for a hover move: mouse (default) | pen. Ignored during a gesture.")] string? pointerType = null,
+        [Description("Pen/touch tip pressure 0..1. Omit for the device default (0.5).")] double? pressure = null,
+        [Description("Pen only: true for the inverted (eraser) end — sets IsInverted and IsEraser.")] bool inverted = false) =>
         AgentToolContext.RunToolAsync("pointer_move", () =>
-            WithTop(windowId, top => InputSynthesizer.PointerMove(top, new Point(x, y), ParseModifiers(modifiers))));
+            WithPointer(windowId, pointerType, pressure, inverted, (top, spec) =>
+                InputSynthesizer.PointerMove(top, new Point(x, y), ParseModifiers(modifiers), spec)));
 
     [McpServerTool(Name = "pointer_release", Destructive = true), Description(
         "Synthesizes a REAL pointer button release at an absolute client-DIP coordinate, ending the active " +
@@ -401,15 +419,19 @@ public sealed class InteractionTools
         [Description("Y in absolute client-DIP pixels.")] double y,
         [Description("Mouse button: Left (default) | Right | Middle.")] string? button = null,
         [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
-        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null,
+        [Description("Emulated device when no gesture is active: mouse (default) | pen | touch.")] string? pointerType = null) =>
         AgentToolContext.RunToolAsync("pointer_release", () =>
-            WithTop(windowId, top => InputSynthesizer.PointerRelease(top, new Point(x, y), ParseButton(button), ParseModifiers(modifiers))));
+            WithPointer(windowId, pointerType, pressure: null, inverted: false, (top, spec) =>
+                InputSynthesizer.PointerRelease(top, new Point(x, y), ParseButton(button), ParseModifiers(modifiers), spec)));
 
     [McpServerTool(Name = "drag", Destructive = true), Description(
         "Synthesizes a REAL press-drag-release from (x1,y1) to (x2,y2) in absolute client-DIP coordinates, " +
         "with the button held through intermediate moves — this is how you scrub a custom slider, move a " +
         "drag thumb, draw a stroke, or reorder a list. 'steps' controls the number of intermediate moves " +
-        "(default 10) and 'holdMs' an optional dwell after pressing. Disabled unless EnableInteraction was set.")]
+        "(default 10) and 'holdMs' an optional dwell after pressing. pointerType='pen' + pressure draws " +
+        "with a pressure-sensitive brush; pointerType='touch' produces a single-finger pan. " +
+        "Disabled unless EnableInteraction was set.")]
     public static Task<string> Drag(
         [Description("Start X in absolute client-DIP pixels.")] double x1,
         [Description("Start Y in absolute client-DIP pixels.")] double y1,
@@ -419,9 +441,99 @@ public sealed class InteractionTools
         [Description("Intermediate move count (default 10).")] int steps = 10,
         [Description("Optional dwell in ms after the press.")] int holdMs = 0,
         [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
-        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null,
+        [Description("Emulated device: mouse (default) | pen | touch.")] string? pointerType = null,
+        [Description("Pen/touch tip pressure 0..1. Omit for the device default (0.5).")] double? pressure = null,
+        [Description("Pen only: true for the inverted (eraser) end — sets IsInverted and IsEraser.")] bool inverted = false) =>
         AgentToolContext.RunToolAsync("drag", () =>
-            WithTop(windowId, top => InputSynthesizer.Drag(top, new Point(x1, y1), new Point(x2, y2), ParseButton(button), steps <= 0 ? 10 : steps, Math.Max(0, holdMs), ParseModifiers(modifiers))));
+            WithPointer(windowId, pointerType, pressure, inverted, (top, spec) =>
+                InputSynthesizer.Drag(top, new Point(x1, y1), new Point(x2, y2), ParseButton(button), steps <= 0 ? 10 : steps, Math.Max(0, holdMs), ParseModifiers(modifiers), spec)));
+
+    [McpServerTool(Name = "pointer_wheel", Destructive = true), Description(
+        "Synthesizes a REAL mouse-wheel event (PointerWheelChanged) at an absolute client-DIP coordinate — " +
+        "the only way to zoom or scroll a custom canvas, which usually zooms around the cursor rather than " +
+        "scrolling a ScrollViewer. Deltas are in NOTCHES, exactly like PointerWheelEventArgs.Delta: dy=1 is " +
+        "one detent away from you (scroll up / zoom in on most apps), dy=-1 towards you, dx scrolls " +
+        "horizontally. The pointer is moved to (x,y) first, so zoom-at-cursor lands where you asked. " +
+        "Set precision=true to emulate a touchpad instead of a notched wheel: the same total delta arrives " +
+        "as a burst of small fractional steps, which is how you exercise code that distinguishes the two. " +
+        "Disabled unless EnableInteraction was set.")]
+    public static Task<string> PointerWheel(
+        [Description("X in absolute client-DIP pixels.")] double x,
+        [Description("Y in absolute client-DIP pixels.")] double y,
+        [Description("Horizontal delta in notches (positive scrolls right).")] double dx = 0,
+        [Description("Vertical delta in notches (positive scrolls up / away from you).")] double dy = 0,
+        [Description("Optional modifiers, e.g. 'Ctrl' — Ctrl+wheel is often zoom.")] string? modifiers = null,
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null,
+        [Description("True to emulate a precision touchpad (fractional multi-step deltas).")] bool precision = false) =>
+        AgentToolContext.RunToolAsync("pointer_wheel", () =>
+        {
+            if (dx == 0 && dy == 0)
+                return "Both deltas are zero, so nothing would happen. Pass dy=1 for one notch up, dy=-1 for one notch down.";
+
+            return WithTop(windowId, top =>
+                InputSynthesizer.Wheel(top, new Point(x, y), new Vector(dx, dy), ParseModifiers(modifiers), precision));
+        });
+
+    [McpServerTool(Name = "touch_press", Destructive = true), Description(
+        "Puts a FINGER down at an absolute client-DIP coordinate. 'touchId' names the finger, so several " +
+        "can be down at once — this is how you build a multi-touch gesture (two-finger tap to undo, " +
+        "two-finger pan, a custom pinch) that a mouse cannot express. Pair every touch_press with a " +
+        "touch_release of the same id. For the common spread/pinch use the 'pinch' tool instead. " +
+        "Disabled unless EnableInteraction was set.")]
+    public static Task<string> TouchPress(
+        [Description("Finger id — any number; use different ids for simultaneous contacts (e.g. 1 and 2).")] long touchId,
+        [Description("X in absolute client-DIP pixels.")] double x,
+        [Description("Y in absolute client-DIP pixels.")] double y,
+        [Description("Contact pressure 0..1. Omit for the device default (0.5).")] double? pressure = null,
+        [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        AgentToolContext.RunToolAsync("touch_press", () =>
+            WithTop(windowId, top => InputSynthesizer.TouchPress(top, touchId, new Point(x, y), ParseModifiers(modifiers), pressure)));
+
+    [McpServerTool(Name = "touch_move", Destructive = true), Description(
+        "Moves the finger 'touchId' to an absolute client-DIP coordinate. The finger must be down " +
+        "(touch_press) first. Move each finger in turn to advance a multi-touch gesture one frame. " +
+        "Disabled unless EnableInteraction was set.")]
+    public static Task<string> TouchMove(
+        [Description("Finger id previously passed to touch_press.")] long touchId,
+        [Description("X in absolute client-DIP pixels.")] double x,
+        [Description("Y in absolute client-DIP pixels.")] double y,
+        [Description("Contact pressure 0..1. Omit for the device default (0.5).")] double? pressure = null,
+        [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        AgentToolContext.RunToolAsync("touch_move", () =>
+            WithTop(windowId, top => InputSynthesizer.TouchMove(top, touchId, new Point(x, y), ParseModifiers(modifiers), pressure)));
+
+    [McpServerTool(Name = "touch_release", Destructive = true), Description(
+        "Lifts the finger 'touchId' at an absolute client-DIP coordinate, ending that contact. " +
+        "Disabled unless EnableInteraction was set.")]
+    public static Task<string> TouchRelease(
+        [Description("Finger id previously passed to touch_press.")] long touchId,
+        [Description("X in absolute client-DIP pixels.")] double x,
+        [Description("Y in absolute client-DIP pixels.")] double y,
+        [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        AgentToolContext.RunToolAsync("touch_release", () =>
+            WithTop(windowId, top => InputSynthesizer.TouchRelease(top, touchId, new Point(x, y), ParseModifiers(modifiers))));
+
+    [McpServerTool(Name = "pinch", Destructive = true), Description(
+        "Performs a complete two-finger pinch/spread centred on (cx,cy) in absolute client-DIP coordinates: " +
+        "both contacts go down 'fromDistance' apart, travel to 'toDistance', then lift — raising " +
+        "PinchEvent for a PinchGestureRecognizer. toDistance > fromDistance spreads (zoom in), " +
+        "toDistance < fromDistance pinches (zoom out); the scale factor is toDistance/fromDistance. " +
+        "Use this rather than hand-rolling touch_press/move/release pairs: a recognizer needs both fingers " +
+        "moving together and enough intermediate steps to lock on. Disabled unless EnableInteraction was set.")]
+    public static Task<string> Pinch(
+        [Description("Centre X in absolute client-DIP pixels.")] double cx,
+        [Description("Centre Y in absolute client-DIP pixels.")] double cy,
+        [Description("Starting distance between the two contacts, in DIPs.")] double fromDistance,
+        [Description("Ending distance between the two contacts, in DIPs.")] double toDistance,
+        [Description("Intermediate move count (default 10, min 2).")] int steps = 10,
+        [Description("Optional modifiers, e.g. 'Ctrl+Shift'.")] string? modifiers = null,
+        [Description("Optional window title or 0-based index. Omit for the main window.")] string? windowId = null) =>
+        AgentToolContext.RunToolAsync("pinch", () =>
+            WithTop(windowId, top => InputSynthesizer.Pinch(top, new Point(cx, cy), fromDistance, toDistance, steps <= 0 ? 10 : steps, ParseModifiers(modifiers))));
 
     [McpServerTool(Name = "open_popup", Destructive = true), Description(
         "Opens a closed Popup/Flyout so its content becomes visible and capturable — the guided way out of " +
@@ -458,6 +570,45 @@ public sealed class InteractionTools
     {
         var top = AgentToolContext.ResolveTopLevel(windowId);
         return top is null ? "No active window/top-level was found." : body(top);
+    }
+
+    /// <summary>
+    /// Resolves the top-level and the emulated device, then runs <paramref name="body"/>. An unknown
+    /// pointerType is reported rather than silently downgraded to a mouse: an agent asking for 'pen'
+    /// wants the pen code path, and a quiet fallback would look like the app ignoring pressure.
+    /// </summary>
+    private static string WithPointer(string? windowId, string? pointerType, double? pressure, bool inverted, Func<TopLevel, PointerSpec, string> body)
+    {
+        if (!TryParsePointerType(pointerType, out var kind))
+            return $"Unknown pointerType '{pointerType}'. Use mouse | pen | touch.";
+
+        if (pressure is { } value && (value < 0 || value > 1))
+            return $"Pressure must be between 0 and 1 (got {value.ToString(CultureInfo.InvariantCulture)}).";
+
+        if (inverted && kind != PointerType.Pen)
+            return "'inverted' only applies to pointerType='pen' (it is the pen's eraser end).";
+
+        var spec = new PointerSpec(kind, pressure, inverted);
+        return WithTop(windowId, top => body(top, spec));
+    }
+
+    private static bool TryParsePointerType(string? pointerType, out PointerType kind)
+    {
+        switch (pointerType?.Trim().ToLowerInvariant())
+        {
+            case null or "" or "mouse":
+                kind = PointerType.Mouse;
+                return true;
+            case "pen" or "stylus":
+                kind = PointerType.Pen;
+                return true;
+            case "touch" or "finger":
+                kind = PointerType.Touch;
+                return true;
+            default:
+                kind = PointerType.Mouse;
+                return false;
+        }
     }
 
     private static MouseButton ParseButton(string? button) =>

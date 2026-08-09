@@ -45,7 +45,7 @@ public class MainView : ViewBase
                                     }),
                                 new HyperlinkButton()
                                     .HorizontalAlignment(HorizontalAlignment.Center)
-                                    .NavigateUri(new Uri("https://github.com/AvaloniaUI/Avalonia.Markup.Declarative"))
+                                    .NavigateUri(new Uri("https://github.com/AvaloniaCommunity/Avalonia.Markup.Declarative"))
                                     .Content("Open on github")
                             ])
                     ),

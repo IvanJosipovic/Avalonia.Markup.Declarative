@@ -373,14 +373,20 @@ public sealed class InspectionTools
         "Captures a PNG screenshot of a window/top-level. Rendering re-draws the visual, so it works " +
         "even for a minimized or occluded window. Pass windowId (window title or 0-based index); omit " +
         "for the main window. Set annotate=true to frame and label every named control (optionally " +
-        "narrowed by a type/name 'filter') — a fast way to map names to positions.")]
+        "narrowed by a type/name 'filter') — a fast way to map names to positions. On a big window pass " +
+        "maxWidth (e.g. 1280) to shrink the image: a full 2560px capture costs a lot of tokens and rarely " +
+        "shows more. To look closely at something small, use screenshot_region with scale instead.")]
     public static Task<CallToolResult> ScreenshotWindow(
         [Description("Optional window title or 0-based index. Omit for the main window.")]
         string? windowId = null,
         [Description("Set true to overlay a labeled frame on every named control before capturing.")]
         bool annotate = false,
         [Description("Optional type/name substring to limit which controls are annotated.")]
-        string? filter = null) =>
+        string? filter = null,
+        [Description("Optional size multiplier: 2 doubles (nearest-neighbour, crisp pixels), 0.5 halves.")]
+        double? scale = null,
+        [Description("Optional cap on the delivered width in pixels; shrinks proportionally, never enlarges.")]
+        int? maxWidth = null) =>
         AgentToolContext.RunOnUiThreadAsync(() =>
         {
             try
@@ -395,9 +401,9 @@ public sealed class InspectionTools
                 {
                     // Stable capture: drain layout/render jobs and retry once on a degenerate (flat)
                     // frame, so a capture right after a state change isn't an empty/dark image (P6).
-                    var captured = ControlScreenshotService.CaptureTopLevelStable(top);
-                    var id = ScreenshotStore.Add($"Window '{title}'", captured);
-                    return Image(captured.Png, $"Window '{title}' {FormatBounds(top.Bounds)} (id={id})");
+                    var captured = Rescale(ControlScreenshotService.CaptureTopLevelStable(top), scale, maxWidth, out var resized);
+                    var id = ScreenshotStore.Add($"Window '{title}'{resized}", captured);
+                    return Image(captured.Png, $"Window '{title}' {FormatBounds(top.Bounds)}{resized} (id={id})");
                 }
 
                 var named = top.GetSelfAndVisualDescendants()
@@ -409,8 +415,8 @@ public sealed class InspectionTools
                 try
                 {
                     Dispatcher.UIThread.RunJobs();
-                    var png = ControlScreenshotService.CaptureTopLevelStable(top).Png;
-                    return Image(png, $"Window '{title}' {FormatBounds(top.Bounds)} — annotated {adorners.Count} named control(s).");
+                    var captured = Rescale(ControlScreenshotService.CaptureTopLevelStable(top), scale, maxWidth, out var resized);
+                    return Image(captured.Png, $"Window '{title}' {FormatBounds(top.Bounds)}{resized} — annotated {adorners.Count} named control(s).");
                 }
                 finally
                 {
@@ -428,12 +434,18 @@ public sealed class InspectionTools
         "Captures a PNG screenshot of a single control identified by its Name. mode='isolated' renders " +
         "just the control's subtree; mode='in_context' renders the window and crops to the control. " +
         "Waits for a rendered frame and retries a degenerate (empty/flat) capture once. If the target is " +
-        "a closed popup/flyout (zero size), returns a hint on how to open it (see open_popup).")]
+        "a closed popup/flyout (zero size), returns a hint on how to open it (see open_popup). " +
+        "scale enlarges a small control (nearest-neighbour, so pixels stay crisp) and maxWidth caps a " +
+        "large one.")]
     public static Task<CallToolResult> ScreenshotControl(
         [Description("The Name of the control to capture.")]
         string name,
         [Description("Capture mode: 'isolated' (default) or 'in_context'.")]
-        string? mode = null) =>
+        string? mode = null,
+        [Description("Optional size multiplier: 4 quadruples (nearest-neighbour, crisp pixels), 0.5 halves.")]
+        double? scale = null,
+        [Description("Optional cap on the delivered width in pixels; shrinks proportionally, never enlarges.")]
+        int? maxWidth = null) =>
         AgentToolContext.RunOnUiThreadAsync(() =>
         {
             var control = AgentToolContext.FindControl(name);
@@ -451,9 +463,9 @@ public sealed class InspectionTools
                     ? ScreenshotMode.InContext
                     : ScreenshotMode.Isolated;
 
-                var captured = ControlScreenshotService.CaptureControlStable(control, screenshotMode);
-                var id = ScreenshotStore.Add($"Control '{name}' ({control.GetType().Name})", captured);
-                return Image(captured.Png, $"Control '{name}' ({control.GetType().Name}) {FormatBounds(control.Bounds)} mode={screenshotMode} (id={id})");
+                var captured = Rescale(ControlScreenshotService.CaptureControlStable(control, screenshotMode), scale, maxWidth, out var resized);
+                var id = ScreenshotStore.Add($"Control '{name}' ({control.GetType().Name}){resized}", captured);
+                return Image(captured.Png, $"Control '{name}' ({control.GetType().Name}) {FormatBounds(control.Bounds)} mode={screenshotMode}{resized} (id={id})");
             }
             catch (Exception ex)
             {
@@ -463,6 +475,67 @@ public sealed class InspectionTools
                 return Error($"Failed to capture control '{name}': {ex.Message}");
             }
         });
+
+    [McpServerTool(Name = "screenshot_region", ReadOnly = true), Description(
+        "Captures a rectangle of a window as PNG. Coordinates are the SAME absolute client-DIP frame as " +
+        "hit_test / click_at / get_visual_tree's center=(x,y), so you can screenshot exactly the area you " +
+        "just interacted with. This is the tool for looking inside a custom canvas, which is one opaque " +
+        "control to get_visual_tree: crop to the interesting rectangle instead of shipping the whole " +
+        "window. Pass scale to enlarge (nearest-neighbour, so a 16x16 sprite at scale=8 stays crisp " +
+        "rather than blurred) or maxWidth to shrink. The result lands in the screenshot store, so " +
+        "compare_screenshots works on regions too — capture the same rectangle before and after an edit " +
+        "to see precisely what changed.")]
+    public static Task<CallToolResult> ScreenshotRegion(
+        [Description("Left edge in absolute client-DIP pixels.")] double x,
+        [Description("Top edge in absolute client-DIP pixels.")] double y,
+        [Description("Width in DIPs.")] double width,
+        [Description("Height in DIPs.")] double height,
+        [Description("Optional window title or 0-based index. Omit for the main window.")]
+        string? windowId = null,
+        [Description("Optional size multiplier: 8 enlarges 8x (nearest-neighbour, crisp pixels), 0.5 halves.")]
+        double? scale = null,
+        [Description("Optional cap on the delivered width in pixels; shrinks proportionally, never enlarges.")]
+        int? maxWidth = null) =>
+        AgentToolContext.RunOnUiThreadAsync(() =>
+        {
+            if (width <= 0 || height <= 0)
+                return Error($"The region must have a positive size (got {width}x{height}).");
+
+            var top = AgentToolContext.ResolveTopLevel(windowId);
+            if (top is null)
+                return Error("No active window/top-level was found.");
+
+            try
+            {
+                var region = new global::Avalonia.Rect(x, y, width, height);
+                var captured = Rescale(ControlScreenshotService.CaptureRegionStable(top, region), scale, maxWidth, out var resized);
+                var title = (top as Window)?.Title ?? top.GetType().Name;
+                var label = $"Region {FormatBounds(region)} of '{title}'{resized}";
+                var id = ScreenshotStore.Add(label, captured);
+                return Image(captured.Png, $"{label} (id={id})");
+            }
+            catch (Exception ex)
+            {
+                return Error($"Failed to capture region: {ex.Message}");
+            }
+        });
+
+    /// <summary>
+    /// Applies the optional scale/maxWidth to a capture and reports what happened, so the agent can tell
+    /// the delivered pixel size from the real on-screen size (and not misread a shrunk shot as a layout
+    /// change).
+    /// </summary>
+    private static CapturedImage Rescale(CapturedImage captured, double? scale, int? maxWidth, out string note)
+    {
+        note = string.Empty;
+        if (ControlScreenshotService.ResolveTargetSize(captured.Size, scale, maxWidth) is not { } target)
+            return captured;
+
+        var resampled = ControlScreenshotService.Resample(captured, target);
+        var how = target.Width > captured.Size.Width ? "nearest-neighbour" : "box-averaged";
+        note = $" — delivered at {target.Width}x{target.Height} ({how} from {captured.Size.Width}x{captured.Size.Height})";
+        return resampled;
+    }
 
     [McpServerTool(Name = "list_screenshots", ReadOnly = true), Description(
         "Lists recently captured screenshots (id, label, size, when) so you can pick ids for compare_screenshots.")]
@@ -667,6 +740,129 @@ public sealed class InspectionTools
             return "No diagnostics recorded.";
 
         return string.Join("\n", entries.Select(e => e.ToString()));
+    }
+
+    [McpServerTool(Name = "get_logs", ReadOnly = true), Description(
+        "Returns the app's recent log output from an in-process ring buffer: everything written through " +
+        "Avalonia's Logger plus everything printed to stdout/stderr. Use this when the app was started by " +
+        "the developer from an IDE and you have no terminal to read — it is the only way to see what the " +
+        "app is telling you. Broader than get_errors, which reports only curated build/binding/runtime " +
+        "errors. Filter with sinceTimestamp (ISO-8601, e.g. from just before an action), level " +
+        "(verbose|debug|information|warning|error|fatal — returns that level and above) and filter (a " +
+        "case-insensitive substring of the message or Avalonia log area). limit returns the most recent " +
+        "matches (default 200).")]
+    public static string GetLogs(
+        [Description("Optional ISO-8601 timestamp; only lines at/after it are returned.")]
+        string? sinceTimestamp = null,
+        [Description("Optional minimum level: verbose | debug | information | warning | error | fatal.")]
+        string? level = null,
+        [Description("Optional case-insensitive substring the message or log area must contain.")]
+        string? filter = null,
+        [Description("Maximum lines to return, most recent first-in-time-order (default 200).")]
+        int? limit = null)
+    {
+        DateTimeOffset? since = null;
+        if (!string.IsNullOrWhiteSpace(sinceTimestamp))
+        {
+            if (!DateTimeOffset.TryParse(sinceTimestamp, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+                return $"'{sinceTimestamp}' is not a valid ISO-8601 timestamp (e.g. '2026-08-02T14:31:05').";
+            since = parsed;
+        }
+
+        global::Avalonia.Logging.LogEventLevel? minimumLevel = null;
+        if (!string.IsNullOrWhiteSpace(level))
+        {
+            if (!AppLogBuffer.TryParseLevel(level, out var parsedLevel))
+                return $"Unknown level '{level}'. Use verbose | debug | information | warning | error | fatal.";
+            minimumLevel = parsedLevel;
+        }
+
+        var entries = AppLogBuffer.Query(since, minimumLevel, filter, limit ?? 200, out var matched);
+        if (matched == 0)
+        {
+            if (!AppLogSink.IsInstalled)
+                return "Log capture is not installed — start the inspector with UseAgentInspector (it installs the buffer).";
+
+            return "No log lines match. The buffer is capturing; the app may simply not have logged anything yet." +
+                   BelowCaptureThresholdNote(minimumLevel);
+        }
+
+        var builder = new StringBuilder();
+        if (BelowCaptureThresholdNote(minimumLevel) is { Length: > 0 } note)
+            builder.Append(note.TrimStart()).Append('\n');
+        if (matched > entries.Count)
+            builder.Append(matched).Append(" line(s) matched; showing the most recent ").Append(entries.Count).Append(".\n");
+        if (AppLogBuffer.DroppedCount > 0)
+            builder.Append(AppLogBuffer.DroppedCount).Append(" older line(s) have been dropped from the ring buffer.\n");
+
+        foreach (var entry in entries)
+            builder.Append(entry).Append('\n');
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Warns when the agent asks for a level the buffer is not capturing, so an empty result is not read
+    /// as "the app logged nothing".
+    /// </summary>
+    private static string BelowCaptureThresholdNote(global::Avalonia.Logging.LogEventLevel? requested) =>
+        requested is { } level && level < AppLogBuffer.MinimumLevel
+            ? $" Note: Avalonia's own logging is only captured from {AppLogBuffer.MinimumLevel} up " +
+              "(capturing lower switches on framework tracing the app would otherwise skip). Console " +
+              "output is captured at every level. Set AppLogBuffer.MinimumLevel to lower the threshold."
+            : string.Empty;
+
+    [McpServerTool(Name = "get_render_stats", ReadOnly = true), Description(
+        "Returns rendering and layout cost for a window: measured frame rate, the number of visuals in the " +
+        "tree, client/frame size, render scaling and — with layoutTiming=true — the last layout run's pass " +
+        "count and duration. Use it to catch a performance regression without a profiler: record the " +
+        "numbers, make a change, compare. By default nothing is switched on to gather them, so an idle " +
+        "window honestly reports 0 fps because nothing asked it to redraw. sampleMs sets how long frames " +
+        "are counted (default 500, max 5000). layoutTiming=true briefly enables Avalonia's LayoutTimeGraph " +
+        "overlay, which is the only way it records layout durations — it draws a visible graph while " +
+        "active, so don't screenshot during that call; the previous overlays are restored afterwards.")]
+    public static async Task<string> GetRenderStats(
+        [Description("Optional window title or 0-based index. Omit for the main window.")]
+        string? windowId = null,
+        [Description("Frame-counting window in milliseconds (default 500, max 5000).")]
+        int? sampleMs = null,
+        [Description("True to enable the LayoutTimeGraph overlay for this call so layout is timed.")]
+        bool layoutTiming = false)
+    {
+        var duration = TimeSpan.FromMilliseconds(Math.Clamp(sampleMs ?? 500, 0, 5000));
+
+        var sampling = await AgentToolContext.RunOnUiThreadAsync<(TopLevel Top, RenderStatsInspector.FrameCounter Counter, IDisposable? Timing)?>(() =>
+        {
+            var top = AgentToolContext.ResolveTopLevel(windowId);
+            if (top is null)
+                return null;
+
+            // Arm the overlay before sampling so a layout run inside the window is actually timed.
+            var timing = layoutTiming ? RenderStatsInspector.EnableLayoutTiming(top) : null;
+            return (top, RenderStatsInspector.FrameCounter.Start(top), timing);
+        });
+
+        if (sampling is not { } sampled)
+            return "No active window/top-level was found.";
+
+        var started = DateTime.UtcNow;
+        if (duration > TimeSpan.Zero)
+            await Task.Delay(duration);
+        var actual = DateTime.UtcNow - started;
+
+        return await AgentToolContext.RunToolAsync("get_render_stats", () =>
+        {
+            sampled.Counter.Dispose();
+            try
+            {
+                return RenderStatsInspector.Collect(sampled.Top, sampled.Counter.Frames, actual).ToString();
+            }
+            finally
+            {
+                // Restore the overlays after collecting, so the snapshot still sees timing as armed.
+                sampled.Timing?.Dispose();
+            }
+        });
     }
 
     private static string FormatBounds(global::Avalonia.Rect b) =>

@@ -41,6 +41,12 @@ public static class AppBuilderAgentInspectorExtensions
         // surface through get_errors. This is a pure observer and never alters the app's behavior.
         global::Avalonia.Markup.Declarative.Diagnostics.RuntimeErrorSink.Install();
 
+        // Buffer the app's ordinary log output for get_logs. Installed last so it wraps the error sink
+        // above and therefore sees everything. Both hooks are pass-through: the previous log sink and
+        // the real console keep receiving every message, so the developer's terminal is unaffected.
+        if (options.CaptureLogs)
+            global::Avalonia.Markup.Declarative.Diagnostics.AppLogSink.Install(options.CaptureConsole);
+
         _server = new AgentInspectorServer(options);
         _server.Start();
 

@@ -483,6 +483,62 @@ public class DiagnosticsTests
         }
     }
 
+    /// <summary>
+    /// A crop / resample must not repaint the image in different colors. Both rebuild the PNG from
+    /// <see cref="CapturedImage.Bgra"/>, so if that buffer is not really BGRA the result comes back with red
+    /// and blue swapped — which is what happened on macOS, where <c>RenderTargetBitmap.Format</c> is
+    /// <c>Rgba8888</c> (a directly-saved capture was fine, so <c>screenshot_window</c> hid the bug while
+    /// <c>screenshot_region</c> showed cyan as yellow). Asserted by comparing each path against the
+    /// directly-encoded capture rather than against a literal, so the test is meaningful whatever pixel
+    /// format the platform picks.
+    /// </summary>
+    [AvaloniaFact]
+    public void Crop_and_resample_preserve_colors()
+    {
+        const byte r = 0x00, g = 0xFF, b = 0xFF; // cyan — asymmetric in R/B, so a swap is unmistakable
+        var window = new Window
+        {
+            Width = 40,
+            Height = 30,
+            Background = new SolidColorBrush(Color.FromRgb(r, g, b))
+        };
+
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        try
+        {
+            var full = ControlScreenshotService.CaptureTopLevelStable(window);
+            AssertPixelIsCyan("full capture", full.Png);
+
+            // The raw buffer is documented as BGRA; every consumer below relies on that.
+            Assert.Equal(new byte[] { b, g, r }, new[] { full.Bgra[0], full.Bgra[1], full.Bgra[2] });
+
+            var region = ControlScreenshotService.CaptureRegionStable(window, new Rect(8, 6, 20, 15));
+            AssertPixelIsCyan("region crop", region.Png);
+
+            var enlarged = ControlScreenshotService.Resample(region, new PixelSize(region.Size.Width * 2, region.Size.Height * 2));
+            AssertPixelIsCyan("nearest-neighbour upscale", enlarged.Png);
+
+            var shrunk = ControlScreenshotService.Resample(full, new PixelSize(full.Size.Width / 2, full.Size.Height / 2));
+            AssertPixelIsCyan("box-averaged downscale", shrunk.Png);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void AssertPixelIsCyan(string what, byte[] png)
+        {
+            using var decoded = SkiaSharp.SKBitmap.Decode(png);
+            Assert.NotNull(decoded);
+            var pixel = decoded.GetPixel(decoded.Width / 2, decoded.Height / 2);
+            Assert.True(pixel.Red == r && pixel.Green == g && pixel.Blue == b,
+                $"{what}: expected #{r:x2}{g:x2}{b:x2}, got #{pixel.Red:x2}{pixel.Green:x2}{pixel.Blue:x2} " +
+                "(red/blue swapped ⇒ the captured buffer is not BGRA)");
+        }
+    }
+
     [AvaloniaFact]
     public void ScreenshotStore_compare_detects_changes_and_produces_diff()
     {
