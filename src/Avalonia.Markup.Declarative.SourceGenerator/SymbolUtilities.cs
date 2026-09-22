@@ -70,6 +70,8 @@ internal static class SymbolUtilities
     {
         var result = new Dictionary<IAssemblySymbol, bool>(SymbolEqualityComparer.Default);
 
+        AddAvaloniaTargets(compilation, result, generatePublicExtensions: false);
+
         foreach (var attribute in compilation.Assembly.GetAttributes())
         {
             switch (attribute.AttributeClass?.ToDisplayString())
@@ -133,23 +135,22 @@ internal static class SymbolUtilities
 
     private static bool HasGeneratePublicExtensions(AttributeData attribute)
     {
-        if (attribute.NamedArguments.Any(static argument =>
-                argument.Key == "GeneratePublicExtensions" &&
-                argument.Value.Value is true))
+        var parameterIndex = -1;
+        if (attribute.AttributeConstructor is { } constructor)
         {
-            return true;
+            for (var index = 0; index < constructor.Parameters.Length; index++)
+            {
+                if (constructor.Parameters[index].Name == "generatePublicExtensions")
+                {
+                    parameterIndex = index;
+                    break;
+                }
+            }
         }
 
-        var argumentIndex = attribute.AttributeClass?.Name switch
-        {
-            "GenerateMarkupExtensionsForAvaloniaAttribute" => 0,
-            "GenerateMarkupExtensionsForAssemblyAttribute" => 1,
-            _ => -1,
-        };
-
-        return argumentIndex >= 0 &&
-            attribute.ConstructorArguments.Length > argumentIndex &&
-            attribute.ConstructorArguments[argumentIndex].Value is true;
+        return parameterIndex >= 0 &&
+            attribute.ConstructorArguments.Length > parameterIndex &&
+            attribute.ConstructorArguments[parameterIndex].Value is true;
     }
 
     internal readonly struct TargetAssembly(IAssemblySymbol assembly, bool generatePublicExtensions)

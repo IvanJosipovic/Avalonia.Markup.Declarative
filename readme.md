@@ -228,7 +228,15 @@ Make sure that the path to the source generator project is correct relative to y
 
 ## External libraries support
 
-Framework extensions are generated automatically for the supported Avalonia assemblies that your project references. To generate extensions for a third-party library, add an assembly attribute that points to any type from that assembly:
+Framework extensions are generated automatically for the supported Avalonia assemblies that your project references. They are internal by default. Libraries that need their generated extensions to be consumed by another project can opt into public extensions:
+
+```csharp
+using Avalonia.Markup.Declarative;
+
+[assembly: GenerateMarkupExtensionsForAvalonia(true)]
+```
+
+Consumers should not opt into public Avalonia extensions when a referenced library already provides them; the generator detects those public extension classes and avoids generating duplicates. To generate extensions for a third-party library, add an assembly attribute that points to any type from that assembly:
 
 ```csharp
 using Avalonia.Markup.Declarative;

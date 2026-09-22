@@ -36,14 +36,28 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
         });
     }
 
-    private static ImmutableArray<ExternalGenerationTarget> GetGenerationTargets(Compilation compilation) =>
-        [..
+    private static ImmutableArray<ExternalGenerationTarget> GetGenerationTargets(Compilation compilation)
+    {
+        return [..
             SymbolUtilities.GetTargetAssemblies(compilation)
-                .SelectMany(static targetAssembly => SymbolUtilities.GetPublicClasses(targetAssembly.Assembly.GlobalNamespace)
+                .SelectMany(targetAssembly => SymbolUtilities.GetPublicClasses(targetAssembly.Assembly.GlobalNamespace)
                     .Where(static publicClass => publicClass.IsOrInheritsFrom("Avalonia.AvaloniaObject"))
+                    .Where(publicClass => !HasPublicExtensionFromReferencedAssembly(compilation, publicClass))
                     .Select(publicClass => ExternalGenerationTarget.Create(publicClass, targetAssembly.GeneratePublicExtensions)))
                 .OrderBy(static target => target.HintName, StringComparer.Ordinal)
         ];
+    }
+
+    private static bool HasPublicExtensionFromReferencedAssembly(
+        Compilation compilation,
+        INamedTypeSymbol publicClass)
+    {
+        var extensionType = compilation.GetTypeByMetadataName(
+            $"Avalonia.Markup.Declarative.{SymbolUtilities.BuildExtensionClassName(publicClass)}");
+
+        return extensionType is { DeclaredAccessibility: Accessibility.Public } &&
+            !SymbolEqualityComparer.Default.Equals(extensionType.ContainingAssembly, compilation.Assembly);
+    }
 
     private readonly struct ExternalGenerationTarget
     {

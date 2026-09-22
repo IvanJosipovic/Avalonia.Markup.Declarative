@@ -15,6 +15,7 @@
 	</PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Fixtures\**" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <PackageReference Include="Avalonia.Headless.XUnit" Version="12.1.1" />
     <PackageReference Include="Avalonia.Themes.Simple" Version="12.1.1" />
@@ -33,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Avalonia.Markup.Declarative\Avalonia.Markup.Declarative.csproj" />
+    <ProjectReference Include="Fixtures\PublicAvaloniaExtensionsFixture\PublicAvaloniaExtensionsFixture.csproj" />
     <ProjectReference Include="..\Avalonia.Markup.Declarative.SourceGenerator\Avalonia.Markup.Declarative.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

@@ -195,6 +195,8 @@ using ReactiveUI.Avalonia;
 
 The build now generates external assembly extensions together with the rest of the project. No extra CLI step is required.
 
+Supported Avalonia framework extensions continue to be generated automatically and are internal by default. A library that publishes generated extensions for its consumers can opt into public generation with `[assembly: GenerateMarkupExtensionsForAvalonia(true)]`. A consuming application should rely on those referenced public extensions rather than enabling public Avalonia generation again; duplicate public extension classes are skipped automatically.
+
 ## Migration checklist
 
 - Replace `ComponentBase` with `ViewBase` or `ViewBase<TViewModel>`.

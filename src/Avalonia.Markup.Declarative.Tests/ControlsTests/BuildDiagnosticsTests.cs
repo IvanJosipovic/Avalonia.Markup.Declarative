@@ -2,9 +2,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Declarative;
 using Avalonia.Markup.Declarative.Tests.ControlsTests;
+using PublicAvaloniaExtensionsFixture;
 
 [assembly: GenerateMarkupExtensionsForAvalonia]
-[assembly: GenerateMarkupExtensionsForAssembly(typeof(GeneratedDiagnosticsControl), true)]
+[assembly: GenerateMarkupExtensionsForAssembly(typeof(GeneratedDiagnosticsControl))]
 
 namespace Avalonia.Markup.Declarative.Tests.ControlsTests;
 
@@ -35,18 +36,6 @@ public class BrokenBindingDiagnosticsControl : Control
     public int BrokenBinding { get; set; }
 }
 
-public class PublicGeneratedDiagnosticsControl : Control
-{
-    public static readonly StyledProperty<int> ValueProperty =
-        AvaloniaProperty.Register<PublicGeneratedDiagnosticsControl, int>(nameof(Value));
-
-    public int Value
-    {
-        get => GetValue(ValueProperty);
-        set => SetValue(ValueProperty, value);
-    }
-}
-
 public class GeneratedDiagnosticsViewModel
 {
     public int Explosive { get; set; }
@@ -67,13 +56,39 @@ public sealed class RawBuildFailureView : ViewBase
 public class BuildDiagnosticsTests : AvaloniaTestBase
 {
     [Fact]
+    public void Assembly_attribute_preserves_legacy_constructor()
+    {
+        var constructor = typeof(GenerateMarkupExtensionsForAssemblyAttribute).GetConstructor([typeof(Type)]);
+
+        Assert.NotNull(constructor);
+        var attribute = new GenerateMarkupExtensionsForAssemblyAttribute(typeof(GeneratedDiagnosticsControl));
+        Assert.False(attribute.GeneratePublicExtensions);
+    }
+
+    [Fact]
     public void Public_attribute_option_generates_public_extensions()
     {
-        var extensionType = typeof(PublicGeneratedDiagnosticsControl).Assembly.GetType(
-            "Avalonia.Markup.Declarative.Avalonia_Markup_Declarative_Tests_ControlsTests_PublicGeneratedDiagnosticsControl_MarkupExtensions");
+        var extensionType = typeof(PublicFixtureControl).Assembly.GetType(
+            "Avalonia.Markup.Declarative.PublicAvaloniaExtensionsFixture_PublicFixtureControl_MarkupExtensions");
 
         Assert.NotNull(extensionType);
         Assert.True(extensionType!.IsPublic);
+
+        var avaloniaExtensionType = typeof(PublicFixtureControl).Assembly.GetType(
+            "Avalonia.Markup.Declarative.Avalonia_Controls_Button_MarkupExtensions");
+
+        Assert.NotNull(avaloniaExtensionType);
+        Assert.True(avaloniaExtensionType!.IsPublic);
+    }
+
+    [Fact]
+    public void Assembly_attribute_defaults_to_internal_extensions()
+    {
+        var extensionType = typeof(BuildDiagnosticsTests).Assembly.GetType(
+            "Avalonia.Markup.Declarative.Avalonia_Markup_Declarative_Tests_ControlsTests_GeneratedDiagnosticsControl_MarkupExtensions");
+
+        Assert.NotNull(extensionType);
+        Assert.False(extensionType!.IsPublic);
     }
 
     [Fact]
