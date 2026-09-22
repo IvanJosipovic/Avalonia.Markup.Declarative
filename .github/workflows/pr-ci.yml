@@ -16,7 +16,7 @@ env:
 jobs:
   build-and-test:
     name: Build & Test
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -28,7 +28,17 @@ jobs:
           global-json-file: global.json
 
       - name: Build
-        run: dotnet build src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION
+        run: dotnet build src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION -p:Version=0.0.1-pr.${{ github.run_id }}
+
+      - name: Pack NuGet packages
+        run: dotnet pack src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION -p:Version=0.0.1-pr.${{ github.run_id }}
+
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: /**/*.nupkg
+          if-no-files-found: error
 
       - name: Test with code coverage
         run: >-
@@ -47,14 +57,3 @@ jobs:
           output: console
           thresholds: '60 80'
 
-      - name: Pack NuGet packages
-        shell: pwsh
-        run: |
-          dotnet pack src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION -p:Version=0.0.1-pr.${{ github.run_id }}
-
-      - name: Upload NuGet packages
-        uses: actions/upload-artifact@v7
-        with:
-          name: nuget-packages
-          path: /**/*.nupkg
-          if-no-files-found: error
