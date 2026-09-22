@@ -51,3 +51,15 @@ jobs:
           file: merged.cobertura.xml
           language: C#
           label: code-coverage/dotnet
+
+      - name: Pack NuGet packages
+        shell: pwsh
+        run: |
+          dotnet pack src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION -p:Version=0.0.1-pr.${{ github.run_id }}
+
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: /**/*.nupkg
+          if-no-files-found: error
