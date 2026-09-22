@@ -1,0 +1,52 @@
+name: PR CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  code-quality: write
+
+env:
+  CONFIGURATION: Release
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_COVERAGE_TELEMETRY_OPTOUT: 1
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION
+
+      - name: Test with code coverage
+        run: >-
+          dotnet test src/Avalonia.Markup.Declarative.slnx
+          -c $env:CONFIGURATION
+          --no-build
+          --coverage
+          --coverage-output-format cobertura
+
+      - name: Merge coverage output
+        run: >
+          dnx dotnet-coverage merge
+          --output merged.cobertura.xml
+          --output-format cobertura
+          "**/*.cobertura.xml"
+
+      - name: Upload code coverage
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: merged.cobertura.xml
+          language: C#
+          label: code-coverage/dotnet
