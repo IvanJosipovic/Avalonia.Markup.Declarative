@@ -28,10 +28,10 @@ jobs:
           global-json-file: global.json
 
       - name: Build
-        run: dotnet build src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION -p:Version=0.0.1-pr.${{ github.run_id }}
+        run: dotnet build src/Avalonia.Markup.Declarative.slnx -c "${{ env.CONFIGURATION }}" -p:Version=0.0.1-pr.${{ github.run_id }}
 
       - name: Pack NuGet packages
-        run: dotnet pack src/Avalonia.Markup.Declarative.slnx -c $env:CONFIGURATION -p:Version=0.0.1-pr.${{ github.run_id }}
+        run: dotnet pack src/Avalonia.Markup.Declarative.slnx -c "${{ env.CONFIGURATION }}" -p:Version=0.0.1-pr.${{ github.run_id }}
 
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v7
@@ -43,7 +43,7 @@ jobs:
       - name: Test with code coverage
         run: >-
           dotnet test src/Avalonia.Markup.Declarative.slnx
-          -c $env:CONFIGURATION
+          -c "${{ env.CONFIGURATION }}"
           --no-build
           --coverage
           --coverage-output-format cobertura
@@ -56,4 +56,3 @@ jobs:
           format: text
           output: console
           thresholds: '60 80'
-
