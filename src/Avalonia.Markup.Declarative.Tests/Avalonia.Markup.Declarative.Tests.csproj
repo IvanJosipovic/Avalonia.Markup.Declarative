@@ -27,12 +27,29 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Avalonia.Markup.Declarative\Avalonia.Markup.Declarative.csproj" />
-    <ProjectReference Include="Fixtures\PublicAvaloniaExtensionsFixture\PublicAvaloniaExtensionsFixture.csproj" />
+    <ProjectReference Include="Fixtures\PublicAvaloniaExtensionsFixture\PublicAvaloniaExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\NoMarkupExtensionsFixture\NoMarkupExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\AvaloniaInternalExtensionsFixture\AvaloniaInternalExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\CustomControlInternalExtensionsFixture\CustomControlInternalExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\CustomControlPublicExtensionsFixture\CustomControlPublicExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\AvaloniaDeduplicationFixture\AvaloniaDeduplicationFixture.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Avalonia.Markup.Declarative.SourceGenerator\Avalonia.Markup.Declarative.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <Target Name="CopyMarkupExtensionFixtures" AfterTargets="Build">
+    <ItemGroup>
+      <MarkupExtensionFixture Include="Fixtures\PublicAvaloniaExtensionsFixture\bin\$(Configuration)\net10.0\PublicAvaloniaExtensionsFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\NoMarkupExtensionsFixture\bin\$(Configuration)\net10.0\NoMarkupExtensionsFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\AvaloniaInternalExtensionsFixture\bin\$(Configuration)\net10.0\AvaloniaInternalExtensionsFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\CustomControlInternalExtensionsFixture\bin\$(Configuration)\net10.0\CustomControlInternalExtensionsFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\CustomControlPublicExtensionsFixture\bin\$(Configuration)\net10.0\CustomControlPublicExtensionsFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\AvaloniaDeduplicationFixture\bin\$(Configuration)\net10.0\AvaloniaDeduplicationFixture.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(MarkupExtensionFixture)" DestinationFolder="$(OutDir)Fixtures" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
