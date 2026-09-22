@@ -1,8 +1,6 @@
 using DeclarativeComponentTemplate;
 using Microsoft.Extensions.DependencyInjection;
 
-[assembly: GenerateMarkupExtensionsForAvalonia()]
-
 var services = new ServiceCollection();
 services.AddSingleton<SampleDataService>();
 

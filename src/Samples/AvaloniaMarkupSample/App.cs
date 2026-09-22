@@ -5,8 +5,6 @@ using Declarative.Avalonia.AgentTools;
 using Microsoft.Extensions.DependencyInjection;
 #endif
 
-[assembly: GenerateMarkupExtensionsForAvalonia]
-
 var lifetime = new ClassicDesktopStyleApplicationLifetime { Args = args, ShutdownMode = ShutdownMode.OnLastWindowClose };
 
 #if DEBUG

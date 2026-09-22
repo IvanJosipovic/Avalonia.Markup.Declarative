@@ -4,7 +4,6 @@ using Avalonia.Markup.Declarative;
 using Avalonia.Markup.Declarative.Tests.ControlsTests;
 using PublicAvaloniaExtensionsFixture;
 
-[assembly: GenerateMarkupExtensionsForAvalonia]
 [assembly: GenerateMarkupExtensionsForAssembly(typeof(GeneratedDiagnosticsControl))]
 
 namespace Avalonia.Markup.Declarative.Tests.ControlsTests;
