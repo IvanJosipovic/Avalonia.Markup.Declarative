@@ -13,4 +13,7 @@ public sealed class FixtureControl : Control
         get => GetValue(ValueProperty);
         set => SetValue(ValueProperty, value);
     }
+
+    public static FixtureControl CreateWithGeneratedValue() =>
+        Avalonia.Markup.Declarative.CustomControlPublicExtensionsFixture_FixtureControl_MarkupExtensions.Value(new FixtureControl(), 42);
 }

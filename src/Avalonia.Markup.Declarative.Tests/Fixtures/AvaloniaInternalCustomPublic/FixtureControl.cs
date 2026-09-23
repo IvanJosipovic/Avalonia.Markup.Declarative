@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 
-namespace CustomControlInternalExtensionsFixture;
+namespace AvaloniaInternalCustomPublic;
 
 public sealed class FixtureControl : Control
 {
@@ -14,6 +14,6 @@ public sealed class FixtureControl : Control
         set => SetValue(ValueProperty, value);
     }
 
-    public static FixtureControl CreateWithGeneratedValue() =>
-        Avalonia.Markup.Declarative.CustomControlInternalExtensionsFixture_FixtureControl_MarkupExtensions.Value(new FixtureControl(), 42);
+    public static FixtureControl SetValueWithGeneratedExtension() =>
+        Avalonia.Markup.Declarative.AvaloniaInternalCustomPublic_FixtureControl_MarkupExtensions.Value(new FixtureControl(), 42);
 }

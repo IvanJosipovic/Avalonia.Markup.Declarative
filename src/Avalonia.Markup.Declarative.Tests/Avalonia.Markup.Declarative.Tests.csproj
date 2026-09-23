@@ -33,6 +33,11 @@
     <ProjectReference Include="Fixtures\CustomControlInternalExtensionsFixture\CustomControlInternalExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="Fixtures\CustomControlPublicExtensionsFixture\CustomControlPublicExtensionsFixture.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="Fixtures\AvaloniaDeduplicationFixture\AvaloniaDeduplicationFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\CustomControlDependentFixture\CustomControlDependentFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\AvaloniaInternalCustomInternal\AvaloniaInternalCustomInternal.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\AvaloniaInternalCustomPublic\AvaloniaInternalCustomPublic.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\AvaloniaPublicCustomInternal\AvaloniaPublicCustomInternal.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="Fixtures\AvaloniaPublicCustomPublic\AvaloniaPublicCustomPublic.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Avalonia.Markup.Declarative.SourceGenerator\Avalonia.Markup.Declarative.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
@@ -48,6 +53,11 @@
       <MarkupExtensionFixture Include="Fixtures\CustomControlInternalExtensionsFixture\bin\$(Configuration)\net10.0\CustomControlInternalExtensionsFixture.dll" />
       <MarkupExtensionFixture Include="Fixtures\CustomControlPublicExtensionsFixture\bin\$(Configuration)\net10.0\CustomControlPublicExtensionsFixture.dll" />
       <MarkupExtensionFixture Include="Fixtures\AvaloniaDeduplicationFixture\bin\$(Configuration)\net10.0\AvaloniaDeduplicationFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\CustomControlDependentFixture\bin\$(Configuration)\net10.0\CustomControlDependentFixture.dll" />
+      <MarkupExtensionFixture Include="Fixtures\AvaloniaInternalCustomInternal\bin\$(Configuration)\net10.0\AvaloniaInternalCustomInternal.dll" />
+      <MarkupExtensionFixture Include="Fixtures\AvaloniaInternalCustomPublic\bin\$(Configuration)\net10.0\AvaloniaInternalCustomPublic.dll" />
+      <MarkupExtensionFixture Include="Fixtures\AvaloniaPublicCustomInternal\bin\$(Configuration)\net10.0\AvaloniaPublicCustomInternal.dll" />
+      <MarkupExtensionFixture Include="Fixtures\AvaloniaPublicCustomPublic\bin\$(Configuration)\net10.0\AvaloniaPublicCustomPublic.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(MarkupExtensionFixture)" DestinationFolder="$(OutDir)Fixtures" SkipUnchangedFiles="true" />
   </Target>
