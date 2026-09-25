@@ -95,6 +95,8 @@ public static class ControlPropertyExtensions
     /// <param name="getter"></param>
     /// <param name="mode"></param>
     /// <param name="converter"></param>
+    /// <param name="file">The source file where the binding was declared, supplied by the compiler.</param>
+    /// <param name="line">The source line where the binding was declared, supplied by the compiler.</param>
     /// <returns></returns>
     [StackTraceHidden]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -142,6 +144,8 @@ public static class ControlPropertyExtensions
     /// <param name="control">The control to bind. Cannot be null.</param>
     /// <param name="avaloniaProperty">The property to bind. Cannot be null.</param>
     /// <param name="binding">The binding to apply to the property. Cannot be null.</param>
+    /// <param name="file">The source file where the binding was declared, supplied by the compiler.</param>
+    /// <param name="line">The source line where the binding was declared, supplied by the compiler.</param>
     /// <returns>The same control instance, enabling method chaining.</returns>
     [StackTraceHidden]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -538,6 +542,8 @@ public static class ControlPropertyExtensions
     /// <param name="control">The control whose Name property will be set. Cannot be null.</param>
     /// <param name="name">The name to assign to the control. Cannot be null or empty.</param>
     /// <param name="ns">The name scope in which to register the control. Cannot be null.</param>
+    /// <param name="_callerFile">The source file where the control was declared, supplied by the compiler.</param>
+    /// <param name="_callerLine">The source line where the control was declared, supplied by the compiler.</param>
     /// <returns>The control instance with the specified name set and registered in the provided name scope. Enables method chaining.</returns>
     [StackTraceHidden]
     public static TElement Name<TElement>(this TElement control, string name, INameScope ns,
