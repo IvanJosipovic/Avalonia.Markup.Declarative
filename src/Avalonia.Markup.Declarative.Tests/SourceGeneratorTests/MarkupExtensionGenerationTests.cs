@@ -122,6 +122,73 @@ public class MarkupExtensionGenerationTests
             source.Contains($"{FixtureNamespace}_FixtureControl_MarkupExtensions", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Multiple_referenced_public_Avalonia_extension_providers_report_a_warning()
+    {
+        var firstProvider = CreatePublicAvaloniaExtensionsReference("FirstPublicExtensionsProvider");
+        var secondProvider = CreatePublicAvaloniaExtensionsReference("SecondPublicExtensionsProvider");
+        var consumer = RunGenerator(CreateCompilationWithReferences(
+            "MultiplePublicExtensionsConsumer",
+            CreateSource(string.Empty, """
+                public static class ConsumerUsage
+                {
+                    public static Button SetWidth() => new Button().Width(120);
+                }
+                """),
+            firstProvider,
+            secondProvider));
+
+        var warning = Assert.Single(consumer.Diagnostics.Where(static diagnostic =>
+            diagnostic.Id == "AMDGEN001"));
+
+        Assert.Equal(DiagnosticSeverity.Warning, warning.Severity);
+        Assert.Contains("Avalonia.Controls.Button", warning.GetMessage(), StringComparison.Ordinal);
+        Assert.Contains("FirstPublicExtensionsProvider", warning.GetMessage(), StringComparison.Ordinal);
+        Assert.Contains("SecondPublicExtensionsProvider", warning.GetMessage(), StringComparison.Ordinal);
+        Assert.DoesNotContain(consumer.GeneratedSources, static source =>
+            source.Contains("Avalonia_Controls_Button_MarkupExtensions", StringComparison.Ordinal));
+        Assert.Contains(
+            consumer.OutputCompilation.GetDiagnostics(TestContext.Current.CancellationToken),
+            static diagnostic => diagnostic.Id == "CS0121");
+    }
+
+    [Fact]
+    public void Single_referenced_public_Avalonia_extension_provider_does_not_report_a_warning()
+    {
+        var provider = CreatePublicAvaloniaExtensionsReference("SinglePublicExtensionsProvider");
+        var consumer = RunGenerator(CreateCompilationWithReferences(
+            "SinglePublicExtensionsConsumer",
+            CreateSource(string.Empty, ""),
+            provider));
+
+        Assert.DoesNotContain(consumer.Diagnostics, static diagnostic => diagnostic.Id == "AMDGEN001");
+    }
+
+    [Fact]
+    public void Same_named_handwritten_extension_classes_do_not_report_a_warning()
+    {
+        const string handwrittenExtensions = """
+            using Avalonia.Controls;
+
+            namespace Avalonia.Markup.Declarative
+            {
+                public static class Avalonia_Controls_Button_MarkupExtensions
+                {
+                    public static Button Width(this Button button, double width) => button;
+                }
+            }
+            """;
+        var firstProvider = EmitReference(CreateCompilation("HandwrittenProviderOne", handwrittenExtensions));
+        var secondProvider = EmitReference(CreateCompilation("HandwrittenProviderTwo", handwrittenExtensions));
+        var consumer = RunGenerator(CreateCompilationWithReferences(
+            "HandwrittenExtensionsConsumer",
+            CreateSource(string.Empty, ""),
+            firstProvider,
+            secondProvider));
+
+        Assert.DoesNotContain(consumer.Diagnostics, static diagnostic => diagnostic.Id == "AMDGEN001");
+    }
+
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
@@ -258,7 +325,19 @@ public class MarkupExtensionGenerationTests
 
         Assert.Empty(driverDiagnostics.Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
         Assert.Empty(runResult.Diagnostics.Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
-        return new GeneratorResult((CSharpCompilation)outputCompilation, generatedSources);
+        return new GeneratorResult(
+            (CSharpCompilation)outputCompilation,
+            generatedSources,
+            driverDiagnostics);
+    }
+
+    private static PortableExecutableReference CreatePublicAvaloniaExtensionsReference(string assemblyName)
+    {
+        var libraryResult = RunGenerator(CreateCompilation(
+            assemblyName,
+            CreateSource("[assembly: GenerateMarkupExtensionsForAvalonia(generatePublicExtensions: true)]", "")));
+        AssertNoErrors(libraryResult.OutputCompilation);
+        return EmitReference(libraryResult.OutputCompilation);
     }
 
     private static PortableExecutableReference EmitReference(CSharpCompilation compilation)
@@ -285,6 +364,16 @@ public class MarkupExtensionGenerationTests
             references,
             compilationOptions ?? new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
     }
+
+    private static CSharpCompilation CreateCompilationWithReferences(
+        string assemblyName,
+        string source,
+        params MetadataReference[] additionalReferences) =>
+        CSharpCompilation.Create(
+            assemblyName,
+            [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview))],
+            PlatformReferences.AddRange(additionalReferences),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
     private static ImmutableArray<MetadataReference> CreatePlatformReferences()
     {
@@ -339,5 +428,8 @@ public class MarkupExtensionGenerationTests
         Assert.Empty(errors);
     }
 
-    private sealed record GeneratorResult(CSharpCompilation OutputCompilation, ImmutableArray<string> GeneratedSources);
+    private sealed record GeneratorResult(
+        CSharpCompilation OutputCompilation,
+        ImmutableArray<string> GeneratedSources,
+        ImmutableArray<Diagnostic> Diagnostics);
 }

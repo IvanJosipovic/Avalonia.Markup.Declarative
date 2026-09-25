@@ -236,7 +236,7 @@ using Avalonia.Markup.Declarative;
 [assembly: GenerateMarkupExtensionsForAvalonia(true)]
 ```
 
-Consumers should not opt into public Avalonia extensions when a referenced library already provides them; the generator detects those public extension classes and avoids generating duplicates. To generate extensions for a third-party library, add an assembly attribute that points to any type from that assembly:
+Only one library in an application's dependency graph should publish public extensions for Avalonia controls. Consumers should rely on the extensions from that library rather than opt into public Avalonia extensions themselves. The generator skips local duplicates when it finds one referenced provider and reports warning `AMDGEN001` with the assembly names and an example control when multiple referenced libraries provide them. If you own the libraries, opt into public generation in just one of them. To generate extensions for a third-party library, add an assembly attribute that points to any type from that assembly:
 
 ```csharp
 using Avalonia.Markup.Declarative;

@@ -9,6 +9,15 @@ namespace Avalonia.Markup.Declarative.SourceGenerator.ExternalGenerators;
 [Generator]
 public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
 {
+    private static readonly DiagnosticDescriptor DuplicatePublicAvaloniaExtensions = new(
+        id: "AMDGEN001",
+        title: "Duplicate public Avalonia markup extensions",
+        messageFormat: "Multiple referenced assemblies provide public Avalonia markup extensions for '{0}' ({1} conflicting Avalonia types total): {2}. Keep public Avalonia extensions in one library in the dependency graph.",
+        category: "Avalonia.Markup.Declarative",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Multiple referenced libraries publish generated extension methods for the same Avalonia type, which can make extension calls ambiguous.");
+
     private static readonly ExternalGeneratorHost GeneratorHost = new();
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -16,6 +25,14 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
         var generationTargets = context.CompilationProvider
             .SelectMany(static (compilation, _) => GetGenerationTargets(compilation))
             .WithComparer(ExternalGenerationTargetComparer.Instance);
+
+        context.RegisterSourceOutput(context.CompilationProvider, static (spc, compilation) =>
+        {
+            foreach (var diagnostic in GetDuplicatePublicAvaloniaExtensionDiagnostics(compilation))
+            {
+                spc.ReportDiagnostic(diagnostic);
+            }
+        });
 
         context.RegisterSourceOutput(generationTargets, static (spc, target) =>
         {
@@ -48,15 +65,78 @@ public sealed class ExternalAssemblyExtensionsGenerator : IIncrementalGenerator
         ];
     }
 
+    private static IEnumerable<Diagnostic> GetDuplicatePublicAvaloniaExtensionDiagnostics(Compilation compilation)
+    {
+        var conflictsByProviderSet = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var referencedAssemblies = compilation.References
+            .Select(compilation.GetAssemblyOrModuleSymbol)
+            .OfType<IAssemblySymbol>()
+            .ToArray();
+
+        foreach (var targetAssembly in SymbolUtilities.GetTargetAssemblies(compilation))
+        {
+            foreach (var publicClass in SymbolUtilities.GetPublicClasses(targetAssembly.Assembly.GlobalNamespace)
+                         .Where(static type => type.IsOrInheritsFrom("Avalonia.AvaloniaObject")))
+            {
+                var extensionTypeName = $"Avalonia.Markup.Declarative.{SymbolUtilities.BuildExtensionClassName(publicClass)}";
+                var providers = referencedAssemblies
+                    .Select(assembly => (Assembly: assembly, ExtensionType: assembly.GetTypeByMetadataName(extensionTypeName)))
+                    .Where(static provider => provider.ExtensionType is
+                    {
+                        DeclaredAccessibility: Accessibility.Public
+                    } extensionType && IsGeneratedExtensionType(extensionType))
+                    .Select(static provider => provider.Assembly.Name)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(static assemblyName => assemblyName, StringComparer.Ordinal)
+                    .ToArray();
+
+                if (providers.Length < 2)
+                {
+                    continue;
+                }
+
+                var providerSet = string.Join("\u001f", providers);
+                if (!conflictsByProviderSet.TryGetValue(providerSet, out var conflictingTypes))
+                {
+                    conflictingTypes = [];
+                    conflictsByProviderSet.Add(providerSet, conflictingTypes);
+                }
+
+                conflictingTypes.Add(publicClass.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
+            }
+        }
+
+        foreach (var conflict in conflictsByProviderSet)
+        {
+            conflict.Value.Sort(StringComparer.Ordinal);
+            var exampleType = conflict.Value.FirstOrDefault(static type => type == "Avalonia.Controls.Button")
+                ?? conflict.Value[0];
+            yield return Diagnostic.Create(
+                DuplicatePublicAvaloniaExtensions,
+                Location.None,
+                exampleType,
+                conflict.Value.Count,
+                string.Join(", ", conflict.Key.Split(new[] { '\u001f' })));
+        }
+    }
+
+    private static bool IsGeneratedExtensionType(INamedTypeSymbol type) =>
+        type.GetAttributes().Any(static attribute =>
+            attribute.AttributeClass?.ToDisplayString() == "System.CodeDom.Compiler.GeneratedCodeAttribute" &&
+            attribute.ConstructorArguments.Length > 0 &&
+            attribute.ConstructorArguments[0].Value is string generatorName &&
+            generatorName == "Avalonia.Markup.Declarative.SourceGenerator");
+
     private static bool HasPublicExtensionFromReferencedAssembly(
         Compilation compilation,
         INamedTypeSymbol publicClass)
     {
-        var extensionType = compilation.GetTypeByMetadataName(
+        var extensionTypes = compilation.GetTypesByMetadataName(
             $"Avalonia.Markup.Declarative.{SymbolUtilities.BuildExtensionClassName(publicClass)}");
 
-        return extensionType is { DeclaredAccessibility: Accessibility.Public } &&
-            !SymbolEqualityComparer.Default.Equals(extensionType.ContainingAssembly, compilation.Assembly);
+        return extensionTypes.Any(extensionType =>
+            extensionType.DeclaredAccessibility == Accessibility.Public &&
+            !SymbolEqualityComparer.Default.Equals(extensionType.ContainingAssembly, compilation.Assembly));
     }
 
     private readonly struct ExternalGenerationTarget

@@ -195,7 +195,7 @@ using ReactiveUI.Avalonia;
 
 The build now generates external assembly extensions together with the rest of the project. No extra CLI step is required.
 
-Supported Avalonia framework extensions continue to be generated automatically and are internal by default. A library that publishes generated extensions for its consumers can opt into public generation with `[assembly: GenerateMarkupExtensionsForAvalonia(true)]`. A consuming application should rely on those referenced public extensions rather than enabling public Avalonia generation again; duplicate public extension classes are skipped automatically.
+Supported Avalonia framework extensions continue to be generated automatically and are internal by default. A library that publishes generated extensions for its consumers can opt into public generation with `[assembly: GenerateMarkupExtensionsForAvalonia(true)]`. Only one library in an application's dependency graph should publish public Avalonia extensions. The generator skips local duplicates when it finds one referenced provider and reports warning `AMDGEN001` with the conflicting assembly names and an example control when multiple referenced libraries provide them.
 
 ## Migration checklist
 
