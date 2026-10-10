@@ -12,6 +12,16 @@ on:
         type: number
         required: false
         default: 30
+      runner:
+        description: 'GitHub Actions runner'
+        type: string
+        required: false
+        default: ubuntu-latest
+      package_artifacts:
+        description: 'Pack and upload NuGet artifacts'
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
@@ -25,7 +35,7 @@ jobs:
   build-test:
     name: Build & Test
     timeout-minutes: ${{ inputs.timeout_minutes }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v7
@@ -36,30 +46,25 @@ jobs:
         global-json-file: global.json
 
     - name: .NET Build
-      run: dotnet build src -c "$CONFIGURATION" -p:Version="${{ inputs.version }}"
+      run: dotnet build src -c ${{ env.CONFIGURATION }} -p:Version=${{ inputs.version }}
 
     - name: .NET Test
-      run: |
-        dotnet test src \
-        -c "$CONFIGURATION" \
-        --no-build \
-        --report-xunit-trx \
-        --report-xunit-trx-filename test-results.trx \
-        --coverage \
-        --coverage-output-format cobertura \
-        --coverage-output coverage.cobertura.xml
+      run: dotnet test src -c ${{ env.CONFIGURATION }} --no-build --report-xunit-trx --report-xunit-trx-filename test-results.trx --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
 
     - name: .NET Pack
-      run: dotnet pack src --no-build -c "$CONFIGURATION" -p:Version="${{ inputs.version }}"
+      if: inputs.package_artifacts
+      run: dotnet pack src --no-build -c ${{ env.CONFIGURATION }} -p:Version=${{ inputs.version }} -o nuget-packages
 
     - name: .NET Pack Templates
-      run: dotnet pack Templates/Declarative.Avalonia.Templates/Declarative.Avalonia.Templates.csproj -c "$CONFIGURATION" -p:Version="${{ inputs.version }}"
+      if: inputs.package_artifacts
+      run: dotnet pack Templates/Declarative.Avalonia.Templates/Declarative.Avalonia.Templates.csproj -c ${{ env.CONFIGURATION }} -p:Version=${{ inputs.version }} -o nuget-packages
 
     - name: Upload NuGet Packages
+      if: inputs.package_artifacts
       uses: actions/upload-artifact@v7
       with:
         name: nuget-packages
         path: |
-          **/*.nupkg
-          **/*.snupkg
+          nuget-packages/*.nupkg
+          nuget-packages/*.snupkg
         if-no-files-found: error

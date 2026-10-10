@@ -28,10 +28,10 @@
       {
         "assets": [
           {
-            "path": "nuget-packages/**/*.nupkg"
+            "path": "nuget-packages/*.nupkg"
           },
           {
-            "path": "nuget-packages/**/*.snupkg"
+            "path": "nuget-packages/*.snupkg"
           }
         ]
       }
