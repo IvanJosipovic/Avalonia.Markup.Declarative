@@ -7,6 +7,12 @@ on:
 jobs:
   build-test:
     name: Build & Test
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, windows-latest]
     permissions:
       contents: read
     uses: ./.github/workflows/build-test.yml
+    with:
+      runner: ${{ matrix.runner }}
+      package_artifacts: ${{ matrix.runner == 'ubuntu-latest' }}

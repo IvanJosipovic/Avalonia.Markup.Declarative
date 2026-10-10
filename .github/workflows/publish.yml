@@ -63,4 +63,4 @@ jobs:
     - name: .NET NuGet Push
       env:
         NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
-      run: dotnet nuget push nuget-packages/**/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
+      run: dotnet nuget push nuget-packages/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
