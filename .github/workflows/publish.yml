@@ -1,5 +1,10 @@
 name: Publish NuGet packages
 
+concurrency:
+  group: nuget-release
+  queue: max
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
   push:
