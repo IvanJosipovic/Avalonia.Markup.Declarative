@@ -8,6 +8,10 @@ on:
         default: '0.0.1-alpha.1'
         required: false
         type: string
+      ref:
+        description: 'Git ref to check out'
+        required: false
+        type: string
       timeout_minutes:
         type: number
         required: false
@@ -39,6 +43,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.ref || github.ref }}
 
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v6

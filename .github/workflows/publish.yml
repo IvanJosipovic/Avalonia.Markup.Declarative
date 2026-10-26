@@ -7,6 +7,11 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      existing_version:
+        description: 'Existing release version to republish (for example, 1.2.3; checks out tag v1.2.3)'
+        required: false
+        type: string
   push:
     branches:
       - 'master'
@@ -16,6 +21,7 @@ on:
 
 jobs:
   get-version:
+    if: inputs.existing_version == ''
     name: Get Next Version
     permissions:
       contents: write # semantic-release validates permissions even in dry_run mode, this job only uses read.
@@ -24,15 +30,18 @@ jobs:
       dry_run: true
 
   build-test:
+    if: always() && (inputs.existing_version != '' || needs.get-version.result == 'success')
     name: Build & Test
     needs: get-version
     permissions:
       contents: read
     uses: ./.github/workflows/build-test.yml
     with:
-      version: ${{ needs.get-version.outputs.new_release_version }}
+      ref: ${{ inputs.existing_version && format('v{0}', inputs.existing_version) || github.ref }}
+      version: ${{ inputs.existing_version || needs.get-version.outputs.new_release_version }}
 
   create-release:
+    if: inputs.existing_version == ''
     name: Crate Release
     needs: build-test
     permissions:
@@ -45,8 +54,11 @@ jobs:
 
   publish-nuget:
     name: Publish NuGet
-    needs: create-release
-    if: needs.create-release.outputs.new_release_published == 'true'
+    needs: [create-release, build-test]
+    if: >-
+      always() &&
+      ((inputs.existing_version == '' && needs.create-release.outputs.new_release_published == 'true') ||
+      (inputs.existing_version != '' && needs.build-test.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       id-token: write
